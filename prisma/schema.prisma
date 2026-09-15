@@ -1,0 +1,34 @@
+generator client {
+  provider = "prisma-client-js"
+}
+datasource db {
+  provider = "sqlite"
+  url = env("DATABASE_URL")
+}
+model GameReservation {
+  id String @id @default(cuid())
+  gameName String
+  hostName String
+  hostTokenHash String?
+  scheduledAt DateTime
+  maxPlayers Int
+  description String @default("")
+  status String @default("OPEN")
+  revision Int @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  participants Participant[]
+  @@index([scheduledAt])
+}
+model Participant {
+  id String @id @default(cuid())
+  reservationId String
+  name String
+  nameKey String
+  tokenHash String
+  joinedAt DateTime @default(now())
+  reservation GameReservation @relation(fields: [reservationId], references: [id], onDelete: Cascade)
+  @@unique([reservationId, nameKey])
+  @@unique([reservationId, tokenHash])
+  @@index([reservationId, joinedAt])
+}

@@ -1,0 +1,21 @@
+services:
+  web:
+    build:
+      context: .
+    ports:
+      - "${APP_PORT:-3001}:3000"
+    environment:
+      DATABASE_URL: file:/app/data/reservations.db
+      NODE_ENV: production
+      NEXT_TELEMETRY_DISABLED: "1"
+      ADMIN_USERNAME: ${ADMIN_USERNAME:-}
+      ADMIN_PASSWORD_HASH: ${ADMIN_PASSWORD_HASH:-}
+      ADMIN_SESSION_SECRET: ${ADMIN_SESSION_SECRET:-}
+    volumes:
+      - reservation-data:/app/data
+    restart: unless-stopped
+    init: true
+    stop_grace_period: 30s
+
+volumes:
+  reservation-data:
