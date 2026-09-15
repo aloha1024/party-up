@@ -25,5 +25,5 @@ for (const [key, value] of Object.entries(values)) {
 }
 writeFileSync(file, env, { mode: 0o600 });
 console.log(
-  `管理员已创建。账号：admin\n密码：${password}\n请保存密码；.env 只保存密码哈希。重启网站或重新创建 Docker 容器后生效。`,
+  `管理员已初始化。账号：admin\n临时密码：${password}\n首次登录必须设置新密码；.env 只保存临时密码哈希。重启网站或重新创建 Docker 容器后生效。`,
 );

@@ -76,23 +76,23 @@ tests/                            校验、业务和并发集成测试
 
 已开始或取消的预约不可编辑；新时间必须在未来；人数上限不能低于当前报名数。编辑、报名和退出共用数据库事务锁，防止并发修改导致超员。Docker 更新运行 `docker compose up -d --build`，容器启动时自动执行新增字段迁移。
 
-## 管理员删除预约
+## 管理员管理
 
 管理员登录后可在管理列表或预约详情点击“编辑预约”，直接修改他人创建的预约，也支持缺少发起人身份记录的旧预约。管理员编辑仍遵守未来时间、昵称唯一和人数上限校验；已开始或已取消的预约不可编辑。权限由服务端验证管理员 Cookie，不能通过请求参数自行声明。管理员编辑不会取得发起人身份。
 
-在项目目录执行 `npm run admin:setup`，脚本会创建 `admin` 账号并一次性显示随机密码。请保存密码；`.env` 中只保存 scrypt 密码哈希与独立会话密钥，不能从哈希找回密码。初始化不会覆盖已有管理员。
+在项目目录执行 `npm run admin:setup`，脚本会初始化 `admin` 账号并一次性显示随机临时密码。首次登录验证临时密码后，必须设置至少 10 个字符的新密码，完成后才会进入管理页面。`.env` 中只保存临时密码哈希与独立会话密钥，正式密码的 scrypt 哈希保存在 SQLite，不能从哈希找回明文。初始化不会覆盖已有配置。
 
 重启网站后，打开 `/admin` 或点击页脚“管理员入口”，登录即可查看全部预约并删除。每次删除需要确认，预约和所有报名记录在同一事务中永久删除。
 
 Docker 使用同一份 `.env` 中的管理员变量，通过 Compose 注入运行时。创建账号后执行 `docker compose up -d --build`。不要把管理员变量配置为 `NEXT_PUBLIC_`，也不要提交 `.env`。
 
-忘记密码时执行 `npm run admin:setup -- --reset`，保存新密码并重启服务。重置会同时轮换密钥，使旧会话失效。登录 Cookie 为 HttpOnly、SameSite=Strict，HTTPS 下设置 Secure，8 小时过期。退出清除当前浏览器 Cookie；若会话泄漏，使用重置命令使所有旧会话失效。登录限制为单进程全局每分钟 10 次，公网管理应使用 HTTPS。
+登录后可在管理页面验证当前密码并设置新密码。修改成功后当前浏览器会收到新会话，其他设备的旧管理员会话立即失效。忘记密码时执行 `npm run admin:setup -- --reset`，保存新临时密码并重启服务；再次登录时必须设置正式密码。重置也会使旧会话失效。登录 Cookie 为 HttpOnly、SameSite=Strict，HTTPS 下设置 Secure，8 小时过期。退出清除当前浏览器 Cookie。登录限制为单进程全局每分钟 10 次，公网管理应使用 HTTPS。
 
 管理员测试覆盖密码、签名、过期和密钥轮换。服务器运行后设置 `TEST_BASE_URL` 和 `TEST_ADMIN_PASSWORD` 再运行 `npm test`，会额外验证登录、未授权删除、级联删除与退出，测试只清理自己创建的记录。
 
 ## 模型与数据流
 
-GameReservation 包含 id、gameName、hostName、scheduledAt、maxPlayers、description、status、revision、createdAt、updatedAt。Participant 包含 id、reservationId、name、nameKey、tokenHash、joinedAt。
+GameReservation 包含 id、gameName、hostName、scheduledAt、maxPlayers、description、status、revision、createdAt、updatedAt。Participant 包含 id、reservationId、name、nameKey、tokenHash、joinedAt。AdminCredential 保存管理员用户名、正式密码哈希、首次改密标记和会话版本；它与业务数据分离，便于后续改为独立账号系统。
 
 一场预约有多个 Participant；删除预约级联删除报名。`(reservationId, nameKey)` 唯一索引禁止同场重名；`(reservationId, tokenHash)` 防止同一浏览器重复报名。名称执行 trim + NFKC 规范化，并以小写键比较。接龙按 joinedAt 升序，id 作为相同时间的稳定排序键。
 
@@ -134,7 +134,7 @@ docker compose ps
 docker compose logs -f web
 ```
 
-创建脚本会显示新管理员密码，请保存。沿用已有 `.env` 时使用原账号密码。需要重置时，在上述 `node scripts/setup-admin.mjs` 命令末尾添加 `--reset`，再执行 `docker compose up -d --force-recreate` 让新配置生效。
+创建脚本会显示临时密码，请保存，并在首次登录时设置正式密码。沿用已有数据卷和 `.env` 时使用数据库中的现有正式密码。需要重置时，在上述 `node scripts/setup-admin.mjs` 命令末尾添加 `--reset`，再执行 `docker compose up -d --force-recreate`；使用新临时密码登录并设置正式密码。
 
 容器入口使用 POSIX `/bin/sh`，数据库初始化和管理员脚本使用 Node.js，均不需要 PowerShell。Docker 构建会规范入口脚本的换行，兼容从 Windows 复制源码到 Linux 的情况。
 
@@ -189,4 +189,3 @@ Docker 配置文件为 `Dockerfile`、`compose.yaml`、`.dockerignore` 和 `scri
 - PostgreSQL、多实例部署和监控
 
 当前只有用于预约管理的单个管理员账号，没有聊天、好友、普通用户账户系统，也不包含生产级反滥用策略。
-

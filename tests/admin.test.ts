@@ -1,38 +1,42 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { scryptSync } from "node:crypto";
 import {
-  adminConfigured,
+  adminBootstrapConfigured,
+  bootstrapFingerprint,
   createAdminSession,
-  verifyAdminSession,
-  verifyCredentials,
+  hashPassword,
+  readAdminSession,
+  verifyPasswordHash,
   SESSION_SECONDS,
 } from "../server/admin-auth";
-test("admin credentials and signed sessions reject wrong password, tampering, expiry and rotation", async () => {
+
+test("password hashes and versioned sessions reject wrong values, tampering and expiry", async () => {
   const old = { ...process.env };
-  const salt = "a".repeat(32);
   try {
     process.env.ADMIN_USERNAME = "admin";
-    process.env.ADMIN_PASSWORD_HASH = `scrypt:${salt}:${scryptSync("test-password", salt, 64).toString("hex")}`;
+    process.env.ADMIN_PASSWORD_HASH = await hashPassword("temporary-password");
     process.env.ADMIN_SESSION_SECRET = "b".repeat(64);
-    assert.equal(adminConfigured(), true);
-    assert.equal(await verifyCredentials("admin", "test-password"), true);
-    assert.equal(await verifyCredentials("guest", "test-password"), false);
-    assert.equal(await verifyCredentials("admin", "wrong"), false);
-    const now = Date.now();
-    const token = createAdminSession(now);
-    assert.equal(verifyAdminSession(token, now), true);
-    assert.equal(verifyAdminSession(token + "x", now), false);
-    assert.equal(verifyAdminSession(undefined, now), false);
+    assert.equal(adminBootstrapConfigured(), true);
+    assert.match(bootstrapFingerprint(), /^[a-f0-9]{64}$/);
     assert.equal(
-      verifyAdminSession(token, now + SESSION_SECONDS * 1000),
+      await verifyPasswordHash(
+        "temporary-password",
+        process.env.ADMIN_PASSWORD_HASH,
+      ),
+      true,
+    );
+    assert.equal(
+      await verifyPasswordHash("wrong", process.env.ADMIN_PASSWORD_HASH),
       false,
     );
+    const now = Date.now();
+    const token = createAdminSession(3, now);
+    assert.deepEqual(readAdminSession(token, now), { sessionVersion: 3 });
+    assert.equal(readAdminSession(token + "x", now), null);
+    assert.equal(readAdminSession(undefined, now), null);
+    assert.equal(readAdminSession(token, now + SESSION_SECONDS * 1000), null);
     process.env.ADMIN_SESSION_SECRET = "c".repeat(64);
-    assert.equal(verifyAdminSession(token, now), false);
-    delete process.env.ADMIN_PASSWORD_HASH;
-    assert.equal(adminConfigured(), false);
-    assert.equal(verifyAdminSession(token, now), false);
+    assert.equal(readAdminSession(token, now), null);
   } finally {
     for (const key of [
       "ADMIN_USERNAME",
