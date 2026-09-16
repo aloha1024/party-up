@@ -39,12 +39,19 @@ function serialize(r: Row, token?: string) {
   };
 }
 export async function listReservations(token?: string) {
-  return (
-    await db.gameReservation.findMany({
-      include,
-      orderBy: { scheduledAt: "asc" },
-    })
-  ).map((r) => serialize(r, token));
+  const reservations = await db.gameReservation.findMany({
+    include,
+    orderBy: [{ scheduledAt: "asc" }, { id: "asc" }],
+  });
+  const now = Date.now();
+  // Stable sorting preserves chronological order within each group.
+  return reservations
+    .sort(
+      (a, b) =>
+        Number(a.scheduledAt.getTime() <= now) -
+        Number(b.scheduledAt.getTime() <= now),
+    )
+    .map((r) => serialize(r, token));
 }
 export async function detail(id: string, token?: string) {
   const r = await db.gameReservation.findUnique({ where: { id }, include });
