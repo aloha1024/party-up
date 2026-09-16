@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { Gamepad2, Plus, ArrowUpRight } from "lucide-react";
+import { Gamepad2, Plus } from "lucide-react";
 import { Toaster } from "sonner";
 import { Button } from "@/components/ui/button";
 import "./globals.css";
@@ -42,12 +42,6 @@ export default function RootLayout({
         </main>
         <footer className="mx-auto flex max-w-6xl items-center justify-between border-t border-white/10 px-5 py-6 text-xs text-zinc-500 sm:px-8">
           <span>PARTY UP / 好队友，一起约。</span>
-          <span className="flex items-center gap-1">
-            <Link href="/admin" className="hover:text-white">
-              管理员入口
-            </Link>{" "}
-            <ArrowUpRight size={14} />
-          </span>
         </footer>
         <Toaster theme="dark" richColors position="top-center" />
       </body>

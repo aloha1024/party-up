@@ -22,9 +22,11 @@ async function request(url: string, method: string, body?: unknown) {
 export function AdminPanel({
   authenticated,
   reservations,
+  view = "reservations",
 }: {
   authenticated: boolean;
   reservations: Reservation[];
+  view?: "reservations" | "password";
 }) {
   const router = useRouter();
   const [pending, start] = useTransition();
@@ -65,6 +67,7 @@ export function AdminPanel({
         return;
       }
       setPassword("");
+      setFirstLogin(false);
       toast.success("管理员登录成功");
       router.refresh();
     });
@@ -95,7 +98,9 @@ export function AdminPanel({
         ← 返回预约大厅
       </Link>
       <div className="my-8 flex items-center justify-between gap-4">
-        <h1 className="text-3xl font-bold">预约管理</h1>
+        <h1 className="text-3xl font-bold">
+          {view === "password" ? "修改管理员密码" : "预约管理"}
+        </h1>
         {authenticated && (
           <Button
             variant="outline"
@@ -112,6 +117,29 @@ export function AdminPanel({
           </Button>
         )}
       </div>
+      {authenticated && (
+        <nav aria-label="管理员导航" className="mb-6 flex flex-wrap gap-3">
+          <Button
+            asChild
+            variant={view === "reservations" ? "default" : "outline"}
+          >
+            <Link
+              href="/admin"
+              aria-current={view === "reservations" ? "page" : undefined}
+            >
+              预约管理
+            </Link>
+          </Button>
+          <Button asChild variant={view === "password" ? "default" : "outline"}>
+            <Link
+              href="/admin/password"
+              aria-current={view === "password" ? "page" : undefined}
+            >
+              修改密码
+            </Link>
+          </Button>
+        </nav>
+      )}
       {error && (
         <p className="mb-5 text-sm text-red-400" role="alert">
           {error}
@@ -173,82 +201,87 @@ export function AdminPanel({
         </form>
       ) : (
         <div className="space-y-6">
-          <form className="panel space-y-5 p-6" onSubmit={changePassword}>
-            <div>
-              <h2 className="text-xl font-semibold">修改管理员密码</h2>
-              <p className="mt-2 text-sm text-zinc-400">
-                修改后，其他浏览器和设备上的管理员登录会立即失效。
-              </p>
-            </div>
-            <label className="block space-y-2">
-              <span>当前密码</span>
-              <Input
-                name="currentPassword"
-                type="password"
-                autoComplete="current-password"
-                maxLength={256}
-                required
-              />
-            </label>
-            <PasswordFields />
-            <Button disabled={pending}>
-              {pending ? "正在保存…" : "修改密码"}
-            </Button>
-          </form>
-          <p className="text-sm text-zinc-400">
-            共 {reservations.length}{" "}
-            场预约。删除会同时移除接龙名单，且无法撤销。
-          </p>
-          {reservations.map((r) => (
-            <div
-              className="panel flex flex-wrap items-center justify-between gap-4 p-5"
-              key={r.id}
-            >
-              <div className="min-w-0">
-                <Link
-                  className="break-all text-lg font-semibold hover:text-lime-300"
-                  href={`/reservation/${r.id}`}
-                >
-                  {r.gameName}
-                </Link>
+          {view === "password" ? (
+            <form className="panel space-y-5 p-6" onSubmit={changePassword}>
+              <div>
+                <h2 className="text-xl font-semibold">修改管理员密码</h2>
                 <p className="mt-2 text-sm text-zinc-400">
-                  {formatTime(r.scheduledAt)} · {r.hostName} ·{" "}
-                  {r.participants.length}/{r.maxPlayers} 人
+                  修改后，其他浏览器和设备上的管理员登录会立即失效。
                 </p>
               </div>
-              <div className="flex gap-2">
-                {!["STARTED", "CANCELLED"].includes(r.status) && (
-                  <Button asChild variant="outline">
-                    <Link href={`/reservation/${r.id}/edit`}>编辑预约</Link>
-                  </Button>
-                )}
-                <Button
-                  className="text-red-400 hover:text-red-300"
-                  variant="outline"
-                  disabled={pending}
-                  onClick={() => {
-                    if (
-                      window.confirm(
-                        `确定永久删除「${r.gameName}」及其全部接龙名单？此操作无法撤销。`,
-                      )
-                    )
-                      run(async () => {
-                        await request(
-                          `/api/admin/reservations/${r.id}`,
-                          "DELETE",
-                        );
-                        toast.success("预约已删除");
-                        router.refresh();
-                      });
-                  }}
+              <label className="block space-y-2">
+                <span>当前密码</span>
+                <Input
+                  name="currentPassword"
+                  type="password"
+                  autoComplete="current-password"
+                  maxLength={256}
+                  required
+                />
+              </label>
+              <PasswordFields />
+              <Button disabled={pending}>
+                {pending ? "正在保存…" : "修改密码"}
+              </Button>
+            </form>
+          ) : (
+            <>
+              <p className="text-sm text-zinc-400">
+                共 {reservations.length}{" "}
+                场预约。删除会同时移除接龙名单，且无法撤销。
+              </p>
+              {reservations.map((r) => (
+                <div
+                  className="panel flex flex-wrap items-center justify-between gap-4 p-5"
+                  key={r.id}
                 >
-                  删除预约
-                </Button>
-              </div>
-            </div>
-          ))}
-          {!reservations.length && (
-            <p className="panel p-8 text-center text-zinc-400">暂无预约</p>
+                  <div className="min-w-0">
+                    <Link
+                      className="break-all text-lg font-semibold hover:text-lime-300"
+                      href={`/reservation/${r.id}`}
+                    >
+                      {r.gameName}
+                    </Link>
+                    <p className="mt-2 text-sm text-zinc-400">
+                      {formatTime(r.scheduledAt)} · {r.hostName} ·{" "}
+                      {r.participants.length}/{r.maxPlayers} 人
+                    </p>
+                  </div>
+                  <div className="flex gap-2">
+                    {!["STARTED", "CANCELLED"].includes(r.status) && (
+                      <Button asChild variant="outline">
+                        <Link href={`/reservation/${r.id}/edit`}>编辑预约</Link>
+                      </Button>
+                    )}
+                    <Button
+                      className="text-red-400 hover:text-red-300"
+                      variant="outline"
+                      disabled={pending}
+                      onClick={() => {
+                        if (
+                          window.confirm(
+                            `确定永久删除「${r.gameName}」及其全部接龙名单？此操作无法撤销。`,
+                          )
+                        )
+                          run(async () => {
+                            await request(
+                              `/api/admin/reservations/${r.id}`,
+                              "DELETE",
+                            );
+                            toast.success("预约已删除");
+                            router.refresh();
+                          });
+                      }}
+                    >
+                      删除预约
+                    </Button>
+                  </div>
+                </div>
+              ))}
+              {!reservations.length && (
+                <p className="panel p-8 text-center text-zinc-400">暂无预约</p>
+              )}
+            </>
           )}
         </div>
       )}
