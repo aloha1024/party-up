@@ -84,11 +84,43 @@ tests/                            校验、业务和并发集成测试
 
 重启网站后，打开 `/admin` 或点击页脚“管理员入口”，登录即可查看全部预约并删除。每次删除需要确认，预约和所有报名记录在同一事务中永久删除。
 
-Docker 使用同一份 `.env` 中的管理员变量，通过 Compose 注入运行时。创建账号后执行 `docker compose up -d --build`。不要把管理员变量配置为 `NEXT_PUBLIC_`，也不要提交 `.env`。
+Docker 首次启动会自动创建管理员，无需手动执行初始化命令，操作见下节。若已有完整的 ADMIN_* 环境变量，继续使用原有配置；三项都为空时才启用自动生成。不要把管理员变量配置为 NEXT_PUBLIC_，也不要提交 .env。
 
 登录后可在管理页面验证当前密码并设置新密码。修改成功后当前浏览器会收到新会话，其他设备的旧管理员会话立即失效。忘记密码时执行 `npm run admin:setup -- --reset`，保存新临时密码并重启服务；再次登录时必须设置正式密码。重置也会使旧会话失效。登录 Cookie 为 HttpOnly、SameSite=Strict，HTTPS 下设置 Secure，8 小时过期。退出清除当前浏览器 Cookie。登录限制为单进程全局每分钟 10 次，公网管理应使用 HTTPS。
 
 管理员测试覆盖密码、签名、过期和密钥轮换。服务器运行后设置 `TEST_BASE_URL` 和 `TEST_ADMIN_PASSWORD` 再运行 `npm test`，会额外验证登录、未授权删除、级联删除与退出，测试只清理自己创建的记录。
+
+## Docker 自动初始化管理员
+
+在包含 compose.yaml 的目录执行：
+
+```bash
+docker compose up -d --build
+docker compose logs -f web
+```
+
+首次启动先执行数据库迁移，再创建账号 admin 和随机临时密码。日志会输出账号与临时密码；请保存后访问 /admin，首次登录必须设置正式密码。Ctrl+C 只退出日志查看，后台容器继续运行。
+
+docker build 只构建镜像，不生成实际部署的账号或将密码写入镜像。上述 Compose 命令完成构建并启动后，通过容器日志查看初始化结果。临时密码仅在首次生成时输出，拥有容器日志访问权限的人可以查看该次输出。
+
+初始化配置保存在 reservation-data 数据卷的 /app/data/admin-bootstrap.json 中，文件仅包含临时密码哈希和会话密钥，不保存明文密码。正式密码哈希保存在同一数据卷的 SQLite 数据库中。容器重启、重新创建或重新构建镜像不会重置管理员密码。备份时应保留整个数据卷。
+
+已有 ADMIN_USERNAME、ADMIN_PASSWORD_HASH、ADMIN_SESSION_SECRET 三项环境变量时优先使用它们，并持久化配置。只设置部分变量会停止启动并提示错误，避免使用错误配置。数据库已有管理员但配置文件与环境变量均缺失时，也会停止启动，请恢复原配置。
+
+忘记密码时，在服务器项目目录通过临时容器重置，再重新创建网站容器：
+
+```bash
+docker run --rm \
+  --user "$(id -u):$(id -g)" \
+  -v "$PWD:/workspace" \
+  -w /workspace \
+  node:22-bookworm-slim \
+  node scripts/setup-admin.mjs --reset
+
+docker compose --env-file .env up -d --force-recreate web
+```
+
+保存重置命令输出的新临时密码，重新登录并设置正式密码。此操作使旧管理员会话失效，不删除预约。
 
 ## 模型与数据流
 
