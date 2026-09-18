@@ -49,7 +49,8 @@ export const POST = (req: NextRequest) =>
         input.username,
         input.password,
       );
-      if (!valid) throw new AppError("INVALID_LOGIN", "账号或密码错误", 401);
+      if (!valid || !admin)
+        throw new AppError("INVALID_LOGIN", "账号或密码错误", 401);
       if (admin.mustChangePassword && !input.newPassword)
         return { requiresPasswordChange: true };
       if (
@@ -58,11 +59,15 @@ export const POST = (req: NextRequest) =>
       )
         throw new AppError("SAME_PASSWORD", "新密码不能与临时密码相同", 400);
       const authenticated = admin.mustChangePassword
-        ? await replaceAdminPassword(admin.passwordHash, input.newPassword!)
+        ? await replaceAdminPassword(
+            admin.id,
+            admin.passwordHash,
+            input.newPassword!,
+          )
         : admin;
       (await cookies()).set(
         ADMIN_COOKIE,
-        createAdminSession(authenticated.sessionVersion),
+        createAdminSession(authenticated.id, authenticated.sessionVersion),
         cookieOptions(req),
       );
       return { ok: true, requiresPasswordChange: false };
@@ -88,12 +93,13 @@ export const PATCH = (req: NextRequest) =>
       if (await verifyPasswordHash(input.newPassword, admin.passwordHash))
         throw new AppError("SAME_PASSWORD", "新密码不能与当前密码相同", 400);
       const updated = await replaceAdminPassword(
+        admin.id,
         admin.passwordHash,
         input.newPassword,
       );
       (await cookies()).set(
         ADMIN_COOKIE,
-        createAdminSession(updated.sessionVersion),
+        createAdminSession(updated.id, updated.sessionVersion),
         cookieOptions(req),
       );
       return { ok: true };

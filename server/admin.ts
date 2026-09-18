@@ -1,3 +1,5 @@
+import { Prisma } from "@prisma/client";
+import { z } from "zod";
 import { cookies } from "next/headers";
 import { db } from "./db";
 import {
@@ -47,42 +49,102 @@ export async function ensureAdminRecord() {
   return existing;
 }
 
-export async function isAdmin() {
-  if (!adminBootstrapConfigured()) return false;
+// The installation's original account retains exclusive account-creation rights.
+export const canCreateAdministrators = (admin: { id: number }) =>
+  admin.id === ADMIN_ID;
+
+export async function currentAdmin() {
+  if (!adminBootstrapConfigured()) return null;
   const session = readAdminSession((await cookies()).get(ADMIN_COOKIE)?.value);
-  if (!session) return false;
-  const admin = await ensureAdminRecord();
-  return (
-    !admin.mustChangePassword && admin.sessionVersion === session.sessionVersion
-  );
+  if (!session) return null;
+  await ensureAdminRecord();
+  const admin = await db.adminCredential.findUnique({
+    where: { id: session.adminId },
+  });
+  if (
+    !admin ||
+    admin.mustChangePassword ||
+    admin.sessionVersion !== session.sessionVersion
+  )
+    return null;
+  return admin;
+}
+
+export async function isAdmin() {
+  return !!(await currentAdmin());
 }
 
 export async function requireAdmin() {
-  if (!(await isAdmin()))
-    throw new AppError("UNAUTHORIZED", "请先登录管理员账号", 401);
-  return db.adminCredential.findUniqueOrThrow({ where: { id: ADMIN_ID } });
+  const admin = await currentAdmin();
+  if (!admin) throw new AppError("UNAUTHORIZED", "请先登录管理员账号", 401);
+  return admin;
+}
+
+export async function requireAccountOwner() {
+  const admin = await requireAdmin();
+  if (!canCreateAdministrators(admin))
+    throw new AppError("FORBIDDEN", "只有主管理员可以创建管理员账号", 403);
+  return admin;
 }
 
 export async function verifyAdminCredentials(
   username: string,
   password: string,
 ) {
-  const admin = await ensureAdminRecord();
-  return {
-    admin,
-    valid:
-      username === admin.username &&
-      (await verifyPasswordHash(password, admin.passwordHash)),
-  };
+  const owner = await ensureAdminRecord();
+  const admin = await db.adminCredential.findUnique({ where: { username } });
+  // Perform password hashing even for unknown usernames.
+  const passwordValid = await verifyPasswordHash(
+    password,
+    admin?.passwordHash ?? owner.passwordHash,
+  );
+  return { admin, valid: !!admin && passwordValid };
+}
+
+const accountSchema = z
+  .object({
+    username: z
+      .string()
+      .trim()
+      .regex(/^[a-z0-9_]{3,32}$/, "账号需为 3–32 位小写字母、数字或下划线"),
+    password: z
+      .string()
+      .min(10, "临时密码至少 10 个字符")
+      .max(128, "临时密码最多 128 个字符"),
+  })
+  .strict();
+
+export async function createAdministrator(input: unknown) {
+  await requireAccountOwner();
+  const data = accountSchema.parse(input);
+  const owner = await db.adminCredential.findUniqueOrThrow({
+    where: { id: ADMIN_ID },
+  });
+  if (data.username === owner.username.toLowerCase())
+    throw new AppError("DUPLICATE_ACCOUNT", "该管理员账号已存在", 409);
+  try {
+    return await db.adminCredential.create({
+      data: {
+        username: data.username,
+        passwordHash: await hashPassword(data.password),
+      },
+      select: { id: true, username: true, mustChangePassword: true },
+    });
+  } catch (e) {
+    if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002")
+      throw new AppError("DUPLICATE_ACCOUNT", "该管理员账号已存在", 409);
+    throw e;
+  }
 }
 
 export async function replaceAdminPassword(
+  adminId: number,
   currentHash: string,
   newPassword: string,
 ) {
   const passwordHash = await hashPassword(newPassword);
   const updated = await db.adminCredential.updateMany({
-    where: { id: ADMIN_ID, passwordHash: currentHash },
+    where: { id: adminId, passwordHash: currentHash },
     data: {
       passwordHash,
       mustChangePassword: false,
@@ -95,5 +157,5 @@ export async function replaceAdminPassword(
       "管理员密码已被修改，请重新登录",
       409,
     );
-  return db.adminCredential.findUniqueOrThrow({ where: { id: ADMIN_ID } });
+  return db.adminCredential.findUniqueOrThrow({ where: { id: adminId } });
 }

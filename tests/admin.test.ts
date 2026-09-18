@@ -30,9 +30,13 @@ test("password hashes and versioned sessions reject wrong values, tampering and 
       false,
     );
     const now = Date.now();
-    const token = createAdminSession(3, now);
-    assert.deepEqual(readAdminSession(token, now), { sessionVersion: 3 });
+    const token = createAdminSession(2, 3, now);
+    assert.deepEqual(readAdminSession(token, now), {
+      adminId: 2,
+      sessionVersion: 3,
+    });
     assert.equal(readAdminSession(token + "x", now), null);
+    assert.equal(readAdminSession(token.replace("v2.2.", "v2.1."), now), null);
     assert.equal(readAdminSession(undefined, now), null);
     assert.equal(readAdminSession(token, now + SESSION_SECONDS * 1000), null);
     process.env.ADMIN_SESSION_SECRET = "c".repeat(64);

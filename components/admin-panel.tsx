@@ -1,5 +1,5 @@
 "use client";
-import { FormEvent, useState, useTransition } from "react";
+import { FormEvent, type ReactNode, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { toast } from "sonner";
@@ -23,10 +23,14 @@ export function AdminPanel({
   authenticated,
   reservations,
   view = "reservations",
+  canCreateAdmins = false,
+  children,
 }: {
   authenticated: boolean;
   reservations: Reservation[];
-  view?: "reservations" | "password";
+  view?: "reservations" | "password" | "accounts";
+  canCreateAdmins?: boolean;
+  children?: ReactNode;
 }) {
   const router = useRouter();
   const [pending, start] = useTransition();
@@ -99,7 +103,11 @@ export function AdminPanel({
       </Link>
       <div className="my-8 flex items-center justify-between gap-4">
         <h1 className="text-3xl font-bold">
-          {view === "password" ? "修改管理员密码" : "预约管理"}
+          {view === "accounts"
+            ? "管理员账号"
+            : view === "password"
+              ? "修改管理员密码"
+              : "预约管理"}
         </h1>
         {authenticated && (
           <Button
@@ -138,6 +146,19 @@ export function AdminPanel({
               修改密码
             </Link>
           </Button>
+          {canCreateAdmins && (
+            <Button
+              asChild
+              variant={view === "accounts" ? "default" : "outline"}
+            >
+              <Link
+                href="/admin/accounts"
+                aria-current={view === "accounts" ? "page" : undefined}
+              >
+                管理员账号
+              </Link>
+            </Button>
+          )}
         </nav>
       )}
       {error && (
@@ -201,7 +222,9 @@ export function AdminPanel({
         </form>
       ) : (
         <div className="space-y-6">
-          {view === "password" ? (
+          {view === "accounts" ? (
+            children
+          ) : view === "password" ? (
             <form className="panel space-y-5 p-6" onSubmit={changePassword}>
               <div>
                 <h2 className="text-xl font-semibold">修改管理员密码</h2>

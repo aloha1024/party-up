@@ -49,29 +49,38 @@ function signature(payload: string) {
   return createHmac("sha256", secret).update(payload).digest("hex");
 }
 
-export function createAdminSession(sessionVersion: number, now = Date.now()) {
-  const payload = `${now + SESSION_SECONDS * 1000}.${sessionVersion}.${randomBytes(24).toString("hex")}`;
+export function createAdminSession(
+  adminId: number,
+  sessionVersion: number,
+  now = Date.now(),
+) {
+  const payload = `v2.${adminId}.${now + SESSION_SECONDS * 1000}.${sessionVersion}.${randomBytes(24).toString("hex")}`;
   return `${payload}.${signature(payload)}`;
 }
 
 export function readAdminSession(token?: string, now = Date.now()) {
   if (!adminBootstrapConfigured() || !token || token.length > 180) return null;
-  const match = /^(\d{13})\.(\d+)\.([a-f0-9]{48})\.([a-f0-9]{64})$/.exec(token);
+  const match =
+    /^v2\.([1-9]\d*)\.(\d{13})\.(\d+)\.([a-f0-9]{48})\.([a-f0-9]{64})$/.exec(
+      token,
+    );
   if (
     !match ||
-    Number(match[1]) <= now ||
-    Number(match[1]) > now + SESSION_SECONDS * 1000
+    !Number.isSafeInteger(Number(match[1])) ||
+    !Number.isSafeInteger(Number(match[3])) ||
+    Number(match[2]) <= now ||
+    Number(match[2]) > now + SESSION_SECONDS * 1000
   )
     return null;
-  const payload = `${match[1]}.${match[2]}.${match[3]}`;
+  const payload = match.slice(1, 5).join(".");
   if (
     !timingSafeEqual(
-      Buffer.from(match[4], "hex"),
-      Buffer.from(signature(payload), "hex"),
+      Buffer.from(match[5], "hex"),
+      Buffer.from(signature("v2." + payload), "hex"),
     )
   )
     return null;
-  return { sessionVersion: Number(match[2]) };
+  return { adminId: Number(match[1]), sessionVersion: Number(match[3]) };
 }
 
 const state = globalThis as unknown as {

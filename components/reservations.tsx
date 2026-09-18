@@ -7,7 +7,6 @@ import {
   ArrowUpRight,
   Check,
   Clock3,
-  Copy,
   Gamepad2,
   Loader2,
   Plus,
@@ -20,6 +19,7 @@ import { Input } from "@/components/ui/input";
 import { createSchema, joinSchema } from "@/lib/validation";
 import { getStatus, statusLabels } from "@/lib/status";
 import { formatTime } from "@/lib/utils";
+import { ReservationShare } from "@/components/reservation-share";
 import type { Reservation } from "@/types/reservation";
 async function request(url: string, method = "GET", data?: unknown) {
   const res = await fetch(url, {
@@ -388,20 +388,7 @@ export function ReservationDetail({
             由 <span className="text-white">{r.hostName}</span> 发起
           </p>
         </div>
-        <Button
-          variant="outline"
-          onClick={async () => {
-            try {
-              await navigator.clipboard.writeText(window.location.href);
-              toast.success("预约链接已复制，发给队友吧");
-            } catch {
-              toast.error("复制失败，请复制浏览器地址栏中的链接");
-            }
-          }}
-        >
-          <Copy />
-          分享预约
-        </Button>
+        <ReservationShare reservation={r} />
         {(r.isHost || admin) && !["STARTED", "CANCELLED"].includes(state) && (
           <Button asChild variant="outline">
             <Link href={`/reservation/${r.id}/edit`}>编辑预约</Link>

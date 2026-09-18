@@ -58,6 +58,31 @@ test("Docker initializes admin once, preserves changed passwords, and supports e
     assert.equal(restarted.sessionVersion, 7);
     assert.equal(logs.join("\n").includes(password), false);
 
+    const upgrade = readFileSync(
+      "prisma/migrations/20260918000100_multiple_admins/migration.sql",
+      "utf8",
+    );
+    for (const statement of upgrade.split(";").filter((s) => s.trim())) {
+      await db.$executeRawUnsafe(statement);
+    }
+    const migrated = await db.adminCredential.findUniqueOrThrow({
+      where: { id: 1 },
+    });
+    assert.deepEqual(migrated, restarted);
+    const child = await db.adminCredential.create({
+      data: {
+        username: "migration_moderator",
+        passwordHash: "child-password-hash",
+      },
+    });
+    assert.ok(child.id > 1);
+    assert.equal(child.mustChangePassword, true);
+    await initializeDockerAdmin({ db, configPath, env: {}, log });
+    assert.deepEqual(
+      await db.adminCredential.findUniqueOrThrow({ where: { id: child.id } }),
+      child,
+    );
+
     await assert.rejects(
       initializeDockerAdmin({
         db,
@@ -78,6 +103,10 @@ test("Docker initializes admin once, preserves changed passwords, and supports e
     assert.equal(reset.passwordHash, resetEnv.ADMIN_PASSWORD_HASH);
     assert.equal(reset.mustChangePassword, true);
     assert.equal(reset.sessionVersion, 8);
+    assert.deepEqual(
+      await db.adminCredential.findUniqueOrThrow({ where: { id: child.id } }),
+      child,
+    );
     assert.deepEqual(JSON.parse(readFileSync(configPath, "utf8")), resetEnv);
 
     rmSync(configPath);

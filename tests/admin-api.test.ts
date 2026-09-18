@@ -10,7 +10,7 @@ test(
   { skip: !base || !temporaryPassword },
   async () => {
     let reservationId: string | undefined;
-    const original = await db.adminCredential.findUnique({ where: { id: 1 } });
+    const original = await db.adminCredential.findMany();
     const send = (path: string, method: string, data?: unknown, cookie = "") =>
       fetch(`${base}${path}`, {
         method,
@@ -105,6 +105,147 @@ test(
         401,
       );
 
+      const accountInput = {
+        username: "test_moderator",
+        password: "moderator-temporary-123",
+      };
+      assert.equal(
+        (await send("/api/admin/accounts", "POST", accountInput)).status,
+        401,
+      );
+      assert.equal(
+        (
+          await send(
+            "/api/admin/accounts",
+            "POST",
+            { ...accountInput, id: 1 },
+            currentCookie,
+          )
+        ).status,
+        400,
+      );
+      assert.equal(
+        (
+          await send(
+            "/api/admin/accounts",
+            "POST",
+            { ...accountInput, password: "short" },
+            currentCookie,
+          )
+        ).status,
+        400,
+      );
+      assert.equal(
+        (
+          await send(
+            "/api/admin/accounts",
+            "POST",
+            { ...accountInput, username: "admin" },
+            currentCookie,
+          )
+        ).status,
+        409,
+      );
+      const accounts = await Promise.all([
+        send("/api/admin/accounts", "POST", accountInput, currentCookie),
+        send("/api/admin/accounts", "POST", accountInput, currentCookie),
+      ]);
+      assert.deepEqual(accounts.map((r) => r.status).sort(), [200, 409]);
+      const account = (await accounts.find((r) => r.status === 200)!.json())
+        .data;
+      assert.ok(account.id > 1);
+      assert.equal(account.mustChangePassword, true);
+      assert.deepEqual(Object.keys(account).sort(), [
+        "id",
+        "mustChangePassword",
+        "username",
+      ]);
+      const rootBefore = await db.adminCredential.findUniqueOrThrow({
+        where: { id: 1 },
+      });
+      const firstModeratorLogin = await send(
+        "/api/admin/session",
+        "POST",
+        accountInput,
+      );
+      assert.equal(firstModeratorLogin.status, 200);
+      assert.equal(
+        (await firstModeratorLogin.json()).data.requiresPasswordChange,
+        true,
+      );
+      assert.equal(firstModeratorLogin.headers.get("set-cookie"), null);
+      const moderatorLogin = await send("/api/admin/session", "POST", {
+        ...accountInput,
+        newPassword: "moderator-final-123",
+      });
+      assert.equal(moderatorLogin.status, 200);
+      const moderatorCookie = moderatorLogin.headers
+        .get("set-cookie")!
+        .split(";")[0];
+      assert.equal(
+        (
+          await send(
+            "/api/admin/accounts",
+            "POST",
+            {
+              username: "blocked_admin",
+              password: "blocked-password-123",
+              administrator: true,
+              role: "ROOT",
+            },
+            moderatorCookie,
+          )
+        ).status,
+        403,
+      );
+      assert.equal(
+        await db.adminCredential.count({
+          where: { username: "blocked_admin" },
+        }),
+        0,
+      );
+      const moderatorPage = await send(
+        "/admin",
+        "GET",
+        undefined,
+        moderatorCookie,
+      );
+      const moderatorHtml = await moderatorPage.text();
+      assert.equal(moderatorHtml.includes('href="/admin/accounts"'), false);
+      assert.equal(moderatorHtml.includes('href="/admin/password"'), true);
+      const forbiddenPage = await fetch(base + "/admin/accounts", {
+        headers: { Cookie: moderatorCookie },
+        redirect: "manual",
+      });
+      const forbiddenHtml = await forbiddenPage.text();
+      assert.ok(
+        forbiddenPage.status === 307 || forbiddenHtml.includes("NEXT_REDIRECT"),
+      );
+      assert.equal(forbiddenHtml.includes('name="username"'), false);
+      const moderatorChanged = await send(
+        "/api/admin/session",
+        "PATCH",
+        {
+          currentPassword: "moderator-final-123",
+          newPassword: "moderator-changed-456",
+          adminId: 1,
+        },
+        moderatorCookie,
+      );
+      assert.equal(moderatorChanged.status, 200);
+      const moderatorCurrentCookie = moderatorChanged.headers
+        .get("set-cookie")!
+        .split(";")[0];
+      assert.equal(
+        (await send(deleteUrl, "DELETE", undefined, moderatorCookie)).status,
+        401,
+      );
+      const rootAfter = await db.adminCredential.findUniqueOrThrow({
+        where: { id: 1 },
+      });
+      assert.equal(rootAfter.passwordHash, rootBefore.passwordHash);
+      assert.equal(rootAfter.sessionVersion, rootBefore.sessionVersion);
+
       const editUrl = `/api/reservations/${reservationId}`;
       const changes = {
         gameName: "Admin edited",
@@ -123,7 +264,12 @@ test(
         200,
       );
       assert.equal(
-        (await send(deleteUrl, "DELETE", undefined, currentCookie)).status,
+        (await send(editUrl, "PATCH", changes, moderatorCurrentCookie)).status,
+        200,
+      );
+      assert.equal(
+        (await send(deleteUrl, "DELETE", undefined, moderatorCurrentCookie))
+          .status,
         200,
       );
       assert.equal(await db.participant.count({ where: { reservationId } }), 0);
@@ -144,7 +290,8 @@ test(
       if (reservationId)
         await db.gameReservation.deleteMany({ where: { id: reservationId } });
       await db.adminCredential.deleteMany();
-      if (original) await db.adminCredential.create({ data: original });
+      if (original.length)
+        await db.adminCredential.createMany({ data: original });
       await db.$disconnect();
     }
   },
