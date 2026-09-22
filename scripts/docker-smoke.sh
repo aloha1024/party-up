@@ -61,5 +61,7 @@ again=json.loads((p/'repeated.json').read_text())['data']
 assert first['id']==again['id'] and again['isHost'] and len(again['participants'])==1
 print('Docker health, migrations, persistent identity and replay passed')
 PY
-"${compose[@]}" exec -T web node -e "require('@prisma/client'); require.resolve('prisma'); try { require.resolve('@playwright/test'); process.exit(1); } catch (e) { if(e.code!=='MODULE_NOT_FOUND') throw e; }"
+"${compose[@]}" exec -T web node -e "require('@prisma/client'); try { require.resolve('@playwright/test'); process.exit(1); } catch (e) { if(e.code!=='MODULE_NOT_FOUND') throw e; }"
+# Prisma is a CLI package; its root export is not the executable entry point.
+"${compose[@]}" exec -T web node node_modules/prisma/build/index.js --version
 docker image inspect "$("${compose[@]}" images -q web)" --format 'Image bytes: {{.Size}}'

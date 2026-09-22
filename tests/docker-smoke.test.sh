@@ -29,6 +29,11 @@ if [[ "$1" == compose ]]; then
     'down -v --remove-orphans') touch "$MOCK_STATE/cleaned" ;;
     'images -q web') echo fake-image ;;
     'exec -T web node -e '*) touch "$MOCK_STATE/runtime-check" ;;
+    'exec -T web node node_modules/prisma/build/index.js --version')
+      touch "$MOCK_STATE/cli-check"
+      [[ "$MOCK_MODE" != cli-failure ]] || exit 1
+      echo 'prisma : 6.19.0'
+      ;;
     *) echo "Unexpected Docker Compose command" >&2; exit 99 ;;
   esac
 elif [[ "$1 $2" == 'inspect --format' ]]; then
@@ -37,6 +42,7 @@ elif [[ "$1 $2" == 'inspect --format' ]]; then
   echo 'status=running exit=0 restarts=0 health=unhealthy'
   touch "$MOCK_STATE/diagnosed"
 elif [[ "$1 $2 $3" == 'image inspect fake-image' ]]; then
+  touch "$MOCK_STATE/image-check"
   echo 'Image bytes: 12345'
 else
   echo 'SECRET-DO-NOT-PRINT' >&2
@@ -96,6 +102,8 @@ run_case() {
 run_case port-change success
 test -f "$MOCK_STATE/replayed"
 test -f "$MOCK_STATE/runtime-check"
+test -f "$MOCK_STATE/cli-check"
+test -f "$MOCK_STATE/image-check"
 grep -q 'Docker restart healthy at http://127.0.0.1:32002' "$MOCK_STATE/output"
 run_case delayed success
 test -f "$MOCK_STATE/replayed"
@@ -109,4 +117,8 @@ run_case missing-port failure
 test ! -f "$MOCK_STATE/replayed"
 test -f "$MOCK_STATE/diagnosed"
 if grep -q 'curl .*http://127.0.0.1:0/' "$MOCK_STATE/commands"; then exit 1; fi
-echo 'Docker smoke orchestration: 4 scenarios passed (mocked Docker/curl)'
+run_case cli-failure failure
+test -f "$MOCK_STATE/replayed"
+test -f "$MOCK_STATE/cli-check"
+test ! -f "$MOCK_STATE/image-check"
+echo 'Docker smoke orchestration: 5 scenarios passed (mocked Docker/curl)'
