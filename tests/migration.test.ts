@@ -8,7 +8,10 @@ test("upgrade retains reservations, roster, root and moderator credentials with 
     const migrations = readdirSync("prisma/migrations")
       .filter((name) => /^\d/.test(name))
       .sort();
-    for (const name of migrations.slice(0, -1))
+    const lifecycleIndex = migrations.indexOf(
+      "20260921000100_admin_lifecycle_and_recycle_bin",
+    );
+    for (const name of migrations.slice(0, lifecycleIndex))
       db.exec(
         readFileSync("prisma/migrations/" + name + "/migration.sql", "utf8"),
       );
@@ -24,11 +27,13 @@ test("upgrade retains reservations, roster, root and moderator credentials with 
     const accounts = db
       .prepare("SELECT * FROM AdminCredential ORDER BY id")
       .all();
-    db.exec(
-      readFileSync(
-        "prisma/migrations/" + migrations.at(-1) + "/migration.sql",
-        "utf8",
-      ),
+    for (const name of migrations.slice(lifecycleIndex))
+      db.exec(
+        readFileSync("prisma/migrations/" + name + "/migration.sql", "utf8"),
+      );
+    assert.equal(
+      db.prepare("SELECT COUNT(*) AS count FROM AdminAuditLog").get()!.count,
+      0,
     );
     assert.deepEqual(
       { ...db.prepare("SELECT * FROM GameReservation").get()! },

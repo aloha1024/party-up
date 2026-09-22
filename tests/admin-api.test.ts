@@ -1,6 +1,7 @@
 import "./support/isolated";
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { randomUUID } from "node:crypto";
 import { db } from "../server/db";
 
 const base = process.env.TEST_BASE_URL;
@@ -11,6 +12,7 @@ test(
   { skip: !base || !temporaryPassword },
   async () => {
     let reservationId: string | undefined;
+    const auditPrefix = "audit-page-" + randomUUID();
     const original = await db.adminCredential.findMany();
     const send = (path: string, method: string, data?: unknown, cookie = "") =>
       fetch(`${base}${path}`, {
@@ -26,6 +28,12 @@ test(
     const changedPassword = "changed-password-456";
     try {
       await db.adminCredential.deleteMany();
+      assert.equal((await send("/api/admin/audit", "GET")).status, 401);
+      assert.equal((await send("/api/admin/trash", "GET")).status, 401);
+      assert.equal(
+        (await send("/api/admin/trash?page=bad", "GET")).status,
+        401,
+      );
       const created = await send("/api/reservations", "POST", {
         gameName: "Admin deletion test",
         hostName: "Host",
@@ -326,6 +334,17 @@ test(
         ).status,
         200,
       );
+      assert.equal(
+        (
+          await send(
+            "/api/admin/audit",
+            "GET",
+            undefined,
+            moderatorCurrentCookie,
+          )
+        ).status,
+        401,
+      );
       const resetAccount = await db.adminCredential.findUniqueOrThrow({
         where: { id: account.id },
       });
@@ -375,7 +394,14 @@ test(
         200,
       );
       assert.equal(
-        (await send(editUrl, "PATCH", changes, enabledCookie)).status,
+        (
+          await send(
+            editUrl,
+            "PATCH",
+            { ...changes, actorId: 999, actorName: "forged" },
+            enabledCookie,
+          )
+        ).status,
         200,
       );
       assert.equal(
@@ -388,6 +414,70 @@ test(
         404,
       );
 
+      const trashListingUrl = "/api/admin/trash?q=" + reservationId;
+      assert.equal(
+        (await send(trashListingUrl, "GET", undefined, moderatorCurrentCookie))
+          .status,
+        401,
+      );
+      const trashListingResponse = await send(
+        trashListingUrl + "&page=99&pageSize=1",
+        "GET",
+        undefined,
+        enabledCookie,
+      );
+      assert.equal(trashListingResponse.status, 200);
+      assert.equal(
+        trashListingResponse.headers.get("cache-control"),
+        "no-store",
+      );
+      const trashListing = (await trashListingResponse.json()).data;
+      assert.deepEqual(
+        [trashListing.total, trashListing.page, trashListing.items.length],
+        [1, 1, 1],
+      );
+      assert.equal(trashListing.items[0].id, reservationId);
+      assert.equal(trashListing.items[0].participantCount, 1);
+      assert.deepEqual(Object.keys(trashListing.items[0]).sort(), [
+        "deletedAt",
+        "gameName",
+        "hostName",
+        "id",
+        "participantCount",
+      ]);
+      for (const query of [
+        "pageSize=49",
+        "date=2030-02-30",
+        "page=1&page=2",
+        "q=a&q=b",
+      ]) {
+        assert.equal(
+          (
+            await send(
+              "/api/admin/trash?" + query,
+              "GET",
+              undefined,
+              enabledCookie,
+            )
+          ).status,
+          400,
+        );
+      }
+      const trashPage = await send(
+        "/admin/trash?q=" + reservationId,
+        "GET",
+        undefined,
+        enabledCookie,
+      );
+      assert.equal(trashPage.status, 200);
+      assert.match(await trashPage.text(), /移入日期（北京时间）/);
+      const invalidTrashPage = await send(
+        "/admin/trash?page=bad",
+        "GET",
+        undefined,
+        enabledCookie,
+      );
+      assert.match(await invalidTrashPage.text(), /筛选条件无效/);
       const trashUrl = "/api/admin/trash/" + reservationId;
       assert.equal((await send(trashUrl, "POST")).status, 401);
       assert.equal((await send(trashUrl, "DELETE")).status, 401);
@@ -396,6 +486,14 @@ test(
         200,
       );
       assert.equal((await send(editUrl, "GET")).status, 200);
+      assert.equal(
+        (
+          await (
+            await send(trashListingUrl, "GET", undefined, enabledCookie)
+          ).json()
+        ).data.total,
+        0,
+      );
       assert.equal(
         (await send(trashUrl, "DELETE", undefined, enabledCookie)).status,
         409,
@@ -437,6 +535,134 @@ test(
       });
       assert.equal(rootFinal.passwordHash, rootBefore.passwordHash);
       assert.equal(rootFinal.sessionVersion, rootBefore.sessionVersion);
+      const auditResponse = await send(
+        "/api/admin/audit?q=" + reservationId,
+        "GET",
+        undefined,
+        enabledCookie,
+      );
+      assert.equal(auditResponse.status, 200);
+      assert.equal(auditResponse.headers.get("cache-control"), "no-store");
+      const auditPage = (await auditResponse.json()).data;
+      assert.equal(auditPage.total, 9);
+      assert.equal(
+        auditPage.items.filter(
+          (row: { action: string }) => row.action === "RESERVATION_PURGE",
+        ).length,
+        1,
+      );
+      assert.ok(
+        auditPage.items.every(
+          (row: { actorId: number; actorName: string }) =>
+            [1, account.id].includes(row.actorId) && row.actorName !== "forged",
+        ),
+      );
+      const logText = JSON.stringify(auditPage);
+      for (const value of [
+        changes.description,
+        temporaryPassword!,
+        "reset-temporary-789",
+        rootFinal.passwordHash,
+        process.env.ADMIN_SESSION_SECRET!,
+      ])
+        assert.equal(logText.includes(value), false);
+      const resetLogs = (
+        await (
+          await send(
+            "/api/admin/audit?action=ADMIN_RESET_PASSWORD&q=" +
+              accountInput.username,
+            "GET",
+            undefined,
+            currentCookie,
+          )
+        ).json()
+      ).data;
+      assert.equal(resetLogs.total, 1);
+      assert.equal(resetLogs.items[0].actorId, 1);
+      assert.equal(resetLogs.items[0].targetId, String(account.id));
+      assert.equal(
+        (
+          await send(
+            "/api/admin/audit?page=1&page=2",
+            "GET",
+            undefined,
+            currentCookie,
+          )
+        ).status,
+        400,
+      );
+      const auditHtml = await (
+        await send("/admin/audit", "GET", undefined, enabledCookie)
+      ).text();
+      assert.ok(auditHtml.includes('aria-label="筛选操作记录"'));
+      assert.ok(auditHtml.includes("操作记录"));
+      const pageIds = Array.from(
+        { length: 23 },
+        (_, i) => auditPrefix + String(i).padStart(2, "0"),
+      );
+      await db.adminAuditLog.createMany({
+        data: pageIds.map((id) => ({
+          id,
+          actorId: 1,
+          actorName: "admin",
+          action: "ADMIN_ENABLE",
+          targetType: "admin",
+          targetId: auditPrefix,
+          targetLabel: auditPrefix,
+          createdAt: new Date("2026-01-01"),
+        })),
+      });
+      const page1 = (
+        await (
+          await send(
+            "/api/admin/audit?q=" + auditPrefix,
+            "GET",
+            undefined,
+            currentCookie,
+          )
+        ).json()
+      ).data;
+      const page2 = (
+        await (
+          await send(
+            "/api/admin/audit?q=" + auditPrefix + "&page=2",
+            "GET",
+            undefined,
+            currentCookie,
+          )
+        ).json()
+      ).data;
+      assert.equal(page1.total, 23);
+      assert.deepEqual(
+        [...page1.items, ...page2.items].map((row: { id: string }) => row.id),
+        [...pageIds].reverse(),
+      );
+
+      // Simulate unavailable audit storage for this account only; the password and session must stay unchanged.
+      const trigger = "audit_account_fail_" + randomUUID().replaceAll("-", "");
+      await db.$executeRawUnsafe(
+        `CREATE TRIGGER ${trigger} BEFORE INSERT ON AdminAuditLog WHEN NEW.action = 'ADMIN_CHANGE_PASSWORD' AND NEW.targetId = '1' BEGIN SELECT RAISE(ABORT, 'simulated audit storage failure'); END`,
+      );
+      try {
+        const failedChange = await send(
+          "/api/admin/session",
+          "PATCH",
+          {
+            currentPassword: changedPassword,
+            newPassword: "must-not-be-saved-123",
+          },
+          currentCookie,
+        );
+        assert.equal(failedChange.status, 503);
+        assert.equal(failedChange.headers.get("set-cookie"), null);
+        const unchanged = await db.adminCredential.findUniqueOrThrow({
+          where: { id: 1 },
+        });
+        assert.equal(unchanged.passwordHash, rootFinal.passwordHash);
+        assert.equal(unchanged.sessionVersion, rootFinal.sessionVersion);
+      } finally {
+        await db.$executeRawUnsafe("DROP TRIGGER " + trigger);
+      }
       const logout = await send(
         "/api/admin/session",
         "DELETE",
@@ -446,6 +672,7 @@ test(
       assert.equal(logout.status, 200);
       assert.match(logout.headers.get("set-cookie")!, /Max-Age=0/i);
     } finally {
+      await db.adminAuditLog.deleteMany({ where: { targetId: auditPrefix } });
       if (reservationId)
         await db.gameReservation.deleteMany({ where: { id: reservationId } });
       await db.adminCredential.deleteMany();

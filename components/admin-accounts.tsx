@@ -1,4 +1,5 @@
 "use client";
+import { request } from "@/lib/client-request";
 import { useState, useTransition, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
@@ -26,13 +27,7 @@ export function AdminAccounts({
     setError("");
     start(async () => {
       try {
-        const response = await fetch("/api/admin/accounts/" + id, {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(data),
-        });
-        const result = await response.json();
-        if (!response.ok) throw new Error(result.error || "操作失败");
+        await request("/api/admin/accounts/" + id, "PATCH", data);
         setResetTarget(null);
         toast.success(
           data.action === "resetPassword"
@@ -41,9 +36,10 @@ export function AdminAccounts({
               ? "账号已禁用，原登录已失效"
               : "账号已启用，请重新登录",
         );
-        router.refresh();
       } catch (e) {
         setError(e instanceof Error ? e.message : "请求失败");
+      } finally {
+        router.refresh();
       }
     });
   }
@@ -77,18 +73,16 @@ export function AdminAccounts({
     setError("");
     start(async () => {
       try {
-        const response = await fetch("/api/admin/accounts", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ username: form.get("username"), password }),
+        await request("/api/admin/accounts", "POST", {
+          username: form.get("username"),
+          password,
         });
-        const result = await response.json();
-        if (!response.ok) throw new Error(result.error || "创建失败，请重试");
         element.reset();
         toast.success("管理员已创建，请将账号和临时密码告知使用者");
-        router.refresh();
       } catch (e) {
         setError(e instanceof Error ? e.message : "请求失败，请重试");
+      } finally {
+        router.refresh();
       }
     });
   }

@@ -1,4 +1,6 @@
 "use client";
+import { z } from "zod";
+import { request } from "@/lib/client-request";
 import { useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -31,17 +33,7 @@ import type {
   ReservationPage,
   ReservationSummary,
 } from "@/types/reservation";
-async function request(url: string, method = "GET", data?: unknown) {
-  const res = await fetch(url, {
-    method,
-    headers: { "Content-Type": "application/json" },
-    body: data === undefined ? undefined : JSON.stringify(data),
-    cache: "no-store",
-  });
-  const result = await res.json();
-  if (!res.ok) throw new Error(result.error || "请求失败，请重试");
-  return result.data;
-}
+
 function Badge({
   reservation: r,
 }: {
@@ -222,6 +214,7 @@ export function CreateForm({ reservation }: { reservation?: Reservation }) {
                   : "/api/reservations",
                 reservation ? "PATCH" : "POST",
                 parsed.data,
+                { schema: z.object({ id: z.string().min(1) }) },
               );
               toast.success(
                 reservation ? "预约已更新" : "预约已创建，你已加入接龙",

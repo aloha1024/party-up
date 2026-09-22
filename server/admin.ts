@@ -2,6 +2,7 @@ import { Prisma } from "@prisma/client";
 import { z } from "zod";
 import { cookies } from "next/headers";
 import { db } from "./db";
+import { recordAdminAction } from "./admin-audit";
 import {
   ADMIN_COOKIE,
   adminBootstrapConfigured,
@@ -116,20 +117,25 @@ const accountSchema = z
   .strict();
 
 export async function createAdministrator(input: unknown) {
-  await requireAccountOwner();
+  const actor = await requireAccountOwner();
   const data = accountSchema.parse(input);
   const owner = await db.adminCredential.findUniqueOrThrow({
     where: { id: ADMIN_ID },
   });
   if (data.username === owner.username.toLowerCase())
     throw new AppError("DUPLICATE_ACCOUNT", "该管理员账号已存在", 409);
+  const passwordHash = await hashPassword(data.password);
   try {
-    return await db.adminCredential.create({
-      data: {
-        username: data.username,
-        passwordHash: await hashPassword(data.password),
-      },
-      select: { id: true, username: true, mustChangePassword: true },
+    return await db.$transaction(async (tx) => {
+      const account = await tx.adminCredential.create({
+        data: { username: data.username, passwordHash },
+        select: { id: true, username: true, mustChangePassword: true },
+      });
+      await recordAdminAction(tx, actor, "ADMIN_CREATE", {
+        id: String(account.id),
+        label: account.username,
+      });
+      return account;
     });
   } catch (e) {
     if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002")
@@ -144,19 +150,28 @@ export async function replaceAdminPassword(
   newPassword: string,
 ) {
   const passwordHash = await hashPassword(newPassword);
-  const updated = await db.adminCredential.updateMany({
-    where: { id: adminId, passwordHash: currentHash, isActive: true },
-    data: {
-      passwordHash,
-      mustChangePassword: false,
-      sessionVersion: { increment: 1 },
-    },
+  return db.$transaction(async (tx) => {
+    const updated = await tx.adminCredential.updateMany({
+      where: { id: adminId, passwordHash: currentHash, isActive: true },
+      data: {
+        passwordHash,
+        mustChangePassword: false,
+        sessionVersion: { increment: 1 },
+      },
+    });
+    if (!updated.count)
+      throw new AppError(
+        "PASSWORD_CHANGED",
+        "管理员密码已被修改，请重新登录",
+        409,
+      );
+    const admin = await tx.adminCredential.findUniqueOrThrow({
+      where: { id: adminId },
+    });
+    await recordAdminAction(tx, admin, "ADMIN_CHANGE_PASSWORD", {
+      id: String(admin.id),
+      label: admin.username,
+    });
+    return admin;
   });
-  if (!updated.count)
-    throw new AppError(
-      "PASSWORD_CHANGED",
-      "管理员密码已被修改，请重新登录",
-      409,
-    );
-  return db.adminCredential.findUniqueOrThrow({ where: { id: adminId } });
 }

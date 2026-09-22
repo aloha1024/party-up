@@ -1,4 +1,5 @@
 import "./support/isolated";
+import { listDeletedReservations } from "../server/reservation-trash";
 import { listReservations } from "../server/reservation-list";
 import { test, after } from "node:test";
 import assert from "node:assert/strict";
@@ -14,9 +15,9 @@ import {
   deleteReservation,
   restoreReservation,
   purgeReservation,
-  listDeletedReservations,
   AppError,
 } from "../server/reservations";
+const actor = { id: 2, username: "test_service_admin" };
 const ids: string[] = [];
 const input = () => ({
   gameName: "生命周期测试",
@@ -59,7 +60,7 @@ test("cancellation authorizes owner/admin, validates reason and freezes original
   );
   await assert.rejects(leaveReservation(r.id, token), code("CANCELLED"));
   await assert.rejects(
-    editReservation(r.id, input(), token, true),
+    editReservation(r.id, input(), token, actor),
     code("CANCELLED"),
   );
   const another = await create();
@@ -69,7 +70,7 @@ test("cancellation authorizes owner/admin, validates reason and freezes original
         another.r.id,
         { reason: "管理员取消" },
         "admin",
-        true,
+        actor,
       )
     ).status,
     "CANCELLED",
@@ -83,15 +84,16 @@ test("recycle bin hides every public operation, restore preserves identity/order
     { reason: "择日再约" },
     token,
   );
-  await assert.rejects(purgeReservation(r.id), code("NOT_DELETED"));
-  await deleteReservation(r.id);
+  await assert.rejects(purgeReservation(r.id, actor), code("NOT_DELETED"));
+  await deleteReservation(r.id, actor);
   assert.equal(
     (await listReservations()).items.some((row) => row.id === r.id),
     false,
   );
   assert.equal(
-    (await listDeletedReservations()).find((row) => row.id === r.id)
-      ?.participantCount,
+    (await listDeletedReservations({ q: r.id })).items.find(
+      (row) => row.id === r.id,
+    )?.participantCount,
     2,
   );
   await assert.rejects(detail(r.id), code("NOT_FOUND"));
@@ -101,18 +103,18 @@ test("recycle bin hides every public operation, restore preserves identity/order
   );
   await assert.rejects(leaveReservation(r.id, token), code("NOT_FOUND"));
   await assert.rejects(
-    editReservation(r.id, input(), token, true),
+    editReservation(r.id, input(), token, actor),
     code("NOT_FOUND"),
   );
   await assert.rejects(
     cancelReservation(r.id, { reason: "again" }, token),
     code("NOT_FOUND"),
   );
-  await restoreReservation(r.id);
+  await restoreReservation(r.id, actor);
   assert.deepEqual(await detail(r.id, token), cancelled);
-  await assert.rejects(restoreReservation(r.id), code("NOT_DELETED"));
-  await deleteReservation(r.id);
-  await purgeReservation(r.id);
+  await assert.rejects(restoreReservation(r.id, actor), code("NOT_DELETED"));
+  await deleteReservation(r.id, actor);
+  await purgeReservation(r.id, actor);
   assert.equal(await db.gameReservation.count({ where: { id: r.id } }), 0);
   assert.equal(
     await db.participant.count({ where: { reservationId: r.id } }),
@@ -121,15 +123,15 @@ test("recycle bin hides every public operation, restore preserves identity/order
 });
 test("restoring an expired reservation does not reopen registration", async () => {
   const { r } = await create();
-  await deleteReservation(r.id);
+  await deleteReservation(r.id, actor);
   await db.gameReservation.update({
     where: { id: r.id },
     data: { scheduledAt: new Date(0) },
   });
-  await restoreReservation(r.id);
+  await restoreReservation(r.id, actor);
   assert.equal((await detail(r.id)).status, "STARTED");
   await assert.rejects(
-    cancelReservation(r.id, { reason: "late" }, "admin", true),
+    cancelReservation(r.id, { reason: "late" }, "admin", actor),
     code("STARTED"),
   );
   await assert.rejects(
@@ -143,7 +145,7 @@ test("concurrent cancellation and deletion retain consistent rosters and never a
     const results = await Promise.allSettled([
       action === "cancel"
         ? cancelReservation(r.id, { reason: "取消" }, token)
-        : deleteReservation(r.id),
+        : deleteReservation(r.id, actor),
       ...Array.from({ length: 5 }, (_, i) =>
         joinReservation(r.id, { name: "Race" + i }, randomUUID()),
       ),

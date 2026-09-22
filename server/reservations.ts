@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { z } from "zod";
 import { Prisma } from "@prisma/client";
 import { db } from "./db";
+import { recordAdminAction, type AuditActor } from "./admin-audit";
 import { createSchema, joinSchema } from "../lib/validation";
 import { getStatus } from "../lib/status";
 export class AppError extends Error {
@@ -157,11 +158,15 @@ export async function leaveReservation(id: string, token: string) {
   return detail(id, token);
 }
 // Caller must enforce administrator authorization. The roster shares this lock.
-export async function deleteReservation(id: string) {
-  await mutate(id, async (tx) => {
+export async function deleteReservation(id: string, actor: AuditActor) {
+  await mutate(id, async (tx, r) => {
     await tx.gameReservation.update({
       where: { id },
       data: { deletedAt: new Date() },
+    });
+    await recordAdminAction(tx, actor, "RESERVATION_TRASH", {
+      id,
+      label: r.gameName,
     });
   });
 }
@@ -170,7 +175,7 @@ export async function editReservation(
   input: unknown,
   token: string,
   // Set only by the server after verifying the administrator session.
-  administrator = false,
+  administrator: AuditActor | null = null,
 ) {
   const data = createSchema.parse(input);
   await mutate(id, async (tx, r) => {
@@ -199,6 +204,11 @@ export async function editReservation(
       where: { id },
       data: { ...data, scheduledAt: new Date(data.scheduledAt) },
     });
+    if (administrator)
+      await recordAdminAction(tx, administrator, "RESERVATION_EDIT", {
+        id,
+        label: data.gameName,
+      });
   });
   return detail(id, token);
 }
@@ -216,7 +226,7 @@ export async function cancelReservation(
   id: string,
   input: unknown,
   token: string,
-  administrator = false,
+  administrator: AuditActor | null = null,
 ) {
   const { reason } = cancellationSchema.parse(input);
   await mutate(id, async (tx, r) => {
@@ -230,31 +240,16 @@ export async function cancelReservation(
       where: { id },
       data: { status: "CANCELLED", cancellationReason: reason },
     });
+    if (administrator)
+      await recordAdminAction(tx, administrator, "RESERVATION_CANCEL", {
+        id,
+        label: r.gameName,
+      });
   });
   return detail(id, token);
 }
-// These three administrative operations must be called only after requireAdmin().
-export async function listDeletedReservations() {
-  const rows = await db.gameReservation.findMany({
-    where: { deletedAt: { not: null } },
-    select: {
-      id: true,
-      gameName: true,
-      hostName: true,
-      deletedAt: true,
-      _count: { select: { participants: true } },
-    },
-    orderBy: [{ deletedAt: "desc" }, { id: "asc" }],
-  });
-  return rows.map((r) => ({
-    id: r.id,
-    gameName: r.gameName,
-    hostName: r.hostName,
-    deletedAt: r.deletedAt!.toISOString(),
-    participantCount: r._count.participants,
-  }));
-}
-export async function restoreReservation(id: string) {
+// Administrative mutations must be called only after requireAdmin().
+export async function restoreReservation(id: string, actor: AuditActor) {
   await mutate(
     id,
     async (tx, r) => {
@@ -264,17 +259,25 @@ export async function restoreReservation(id: string) {
         where: { id },
         data: { deletedAt: null },
       });
+      await recordAdminAction(tx, actor, "RESERVATION_RESTORE", {
+        id,
+        label: r.gameName,
+      });
     },
     true,
   );
 }
-export async function purgeReservation(id: string) {
+export async function purgeReservation(id: string, actor: AuditActor) {
   await mutate(
     id,
     async (tx, r) => {
       if (!r.deletedAt)
         throw new AppError("NOT_DELETED", "请先将预约移入回收站", 409);
       await tx.gameReservation.delete({ where: { id } });
+      await recordAdminAction(tx, actor, "RESERVATION_PURGE", {
+        id,
+        label: r.gameName,
+      });
     },
     true,
   );

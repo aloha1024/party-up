@@ -9,8 +9,8 @@ export const DELETE = (
   respond(
     req,
     async () => {
-      await requireAdmin();
-      await deleteReservation((await context.params).id);
+      const actor = await requireAdmin();
+      await deleteReservation((await context.params).id, actor);
       return { ok: true };
     },
     false,

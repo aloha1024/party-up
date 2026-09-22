@@ -52,3 +52,19 @@ model AdminCredential {
   createdAt            DateTime @default(now())
   updatedAt            DateTime @updatedAt
 }
+
+// Snapshots intentionally have no foreign keys: audit history survives permanent deletion.
+model AdminAuditLog {
+  id          String   @id @default(cuid())
+  actorId     Int
+  actorName   String
+  action      String
+  targetType  String
+  targetId    String
+  targetLabel String
+  createdAt   DateTime @default(now())
+
+  @@index([createdAt, id])
+  @@index([action, createdAt])
+  @@index([targetType, targetId])
+}

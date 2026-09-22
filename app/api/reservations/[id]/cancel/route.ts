@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 import { body, respond } from "@/server/http";
 import { cancelReservation } from "@/server/reservations";
-import { isAdmin } from "@/server/admin";
+import { currentAdmin } from "@/server/admin";
 export const POST = (
   req: NextRequest,
   context: { params: Promise<{ id: string }> },
@@ -11,6 +11,6 @@ export const POST = (
       (await context.params).id,
       await body(req),
       token,
-      await isAdmin(),
+      await currentAdmin(),
     ),
   );

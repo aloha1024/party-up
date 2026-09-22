@@ -7,8 +7,8 @@ export const POST = (req: NextRequest, context: Context) =>
   respond(
     req,
     async () => {
-      await requireAdmin();
-      await restoreReservation((await context.params).id);
+      const actor = await requireAdmin();
+      await restoreReservation((await context.params).id, actor);
       return { ok: true };
     },
     false,
@@ -17,8 +17,8 @@ export const DELETE = (req: NextRequest, context: Context) =>
   respond(
     req,
     async () => {
-      await requireAdmin();
-      await purgeReservation((await context.params).id);
+      const actor = await requireAdmin();
+      await purgeReservation((await context.params).id, actor);
       return { ok: true };
     },
     false,

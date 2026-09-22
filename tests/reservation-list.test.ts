@@ -10,6 +10,7 @@ import {
   reservationListUrl,
   listSearchParams,
 } from "../lib/reservation-list";
+const actor = { id: 2, username: "test_service_admin" };
 const ids: string[] = [];
 after(async () => {
   await db.gameReservation.deleteMany({ where: { id: { in: ids } } });
@@ -72,7 +73,7 @@ test("list pagination crosses the upcoming/past boundary without duplicates, exp
     "scheduledAt",
     "status",
   ]);
-  await deleteReservation(q + "e");
+  await deleteReservation(q + "e", actor);
   const clamped = await listReservations({ q, page: 99, pageSize: 2 }, now);
   assert.equal(clamped.page, 2);
   assert.equal(clamped.total, 4);
@@ -122,7 +123,7 @@ test("search matches hosts; date filtering uses Beijing midnight and excludes so
     ),
     [q + "2"],
   );
-  await deleteReservation(q + "2");
+  await deleteReservation(q + "2", actor);
   const empty = await listReservations({ q, view: "cancelled", page: 9 }, now);
   assert.deepEqual(
     [empty.total, empty.page, empty.pageCount, empty.items.length],

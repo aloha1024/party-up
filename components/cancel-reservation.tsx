@@ -1,4 +1,5 @@
 "use client";
+import { request } from "@/lib/client-request";
 import { useState, useTransition, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
@@ -20,18 +21,15 @@ export function CancelReservation({ id }: { id: string }) {
     setError("");
     start(async () => {
       try {
-        const response = await fetch("/api/reservations/" + id + "/cancel", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ reason }),
+        await request("/api/reservations/" + id + "/cancel", "POST", {
+          reason,
         });
-        const result = await response.json();
-        if (!response.ok) throw new Error(result.error || "取消失败");
         setOpen(false);
         toast.success("预约已取消");
-        router.refresh();
       } catch (e) {
         setError(e instanceof Error ? e.message : "请求失败");
+      } finally {
+        router.refresh();
       }
     });
   }

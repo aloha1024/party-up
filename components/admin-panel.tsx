@@ -1,4 +1,6 @@
 "use client";
+import { z } from "zod";
+import { request } from "@/lib/client-request";
 import { FormEvent, type ReactNode, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
@@ -13,17 +15,6 @@ import {
 import { useReservationRefresh } from "@/components/use-reservation-refresh";
 import type { ReservationSummary, ReservationPage } from "@/types/reservation";
 
-async function request(url: string, method: string, body?: unknown) {
-  const response = await fetch(url, {
-    method,
-    headers: { "Content-Type": "application/json" },
-    body: body ? JSON.stringify(body) : undefined,
-  });
-  const result = await response.json();
-  if (!response.ok) throw new Error(result.error || "操作失败，请重试");
-  return result.data;
-}
-
 export function AdminPanel({
   authenticated,
   reservations,
@@ -35,7 +26,7 @@ export function AdminPanel({
   authenticated: boolean;
   reservations: ReservationSummary[];
   listing?: ReservationPage;
-  view?: "reservations" | "password" | "accounts" | "trash";
+  view?: "reservations" | "password" | "accounts" | "trash" | "audit";
   canCreateAdmins?: boolean;
   children?: ReactNode;
 }) {
@@ -67,11 +58,16 @@ export function AdminPanel({
     if (firstLogin && newPassword !== confirmation)
       return setError("两次输入的新密码不一致");
     run(async () => {
-      const data = await request("/api/admin/session", "POST", {
-        username,
-        password,
-        ...(firstLogin ? { newPassword } : {}),
-      });
+      const data = await request(
+        "/api/admin/session",
+        "POST",
+        {
+          username,
+          password,
+          ...(firstLogin ? { newPassword } : {}),
+        },
+        { schema: z.object({ requiresPasswordChange: z.boolean() }) },
+      );
       if (data.requiresPasswordChange) {
         setFirstLogin(true);
         setError("");
@@ -111,13 +107,15 @@ export function AdminPanel({
       </Link>
       <div className="my-8 flex items-center justify-between gap-4">
         <h1 className="text-3xl font-bold">
-          {view === "trash"
-            ? "回收站"
-            : view === "accounts"
-              ? "管理员账号"
-              : view === "password"
-                ? "修改管理员密码"
-                : "预约管理"}
+          {view === "audit"
+            ? "操作记录"
+            : view === "trash"
+              ? "回收站"
+              : view === "accounts"
+                ? "管理员账号"
+                : view === "password"
+                  ? "修改管理员密码"
+                  : "预约管理"}
         </h1>
         {authenticated && (
           <Button
@@ -175,6 +173,14 @@ export function AdminPanel({
               aria-current={view === "trash" ? "page" : undefined}
             >
               回收站
+            </Link>
+          </Button>
+          <Button asChild variant={view === "audit" ? "default" : "outline"}>
+            <Link
+              href="/admin/audit"
+              aria-current={view === "audit" ? "page" : undefined}
+            >
+              操作记录
             </Link>
           </Button>
         </nav>
@@ -240,7 +246,7 @@ export function AdminPanel({
         </form>
       ) : (
         <div className="space-y-6">
-          {view === "accounts" || view === "trash" ? (
+          {view === "accounts" || view === "trash" || view === "audit" ? (
             children
           ) : view === "password" ? (
             <form className="panel space-y-5 p-6" onSubmit={changePassword}>
