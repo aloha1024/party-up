@@ -41,7 +41,7 @@ Use kebab-case filenames, PascalCase components/types, and camelCase functions/v
 
 Unit/HTTP tests use `node:test`, `node:assert/strict`, and `tsx`; name files `tests/*.test.ts`. Browser tests use Playwright in `tests/e2e/*.spec.ts`. Import `./support/isolated` before application database imports.
 
-Cover authorization, validation, state transitions, concurrent mutations, and migration preservation when affected. No numeric coverage threshold exists. Run type checking and relevant tests before review. Full tests overwrite `.next`; stop local servers first. Never target production databases or services.
+Cover authorization, validation, state transitions, concurrent mutations, and migration preservation when affected. No numeric coverage threshold exists. Run type checking and relevant tests before review. Test files share SQLite and run serially; keep race scenarios concurrent within their test. Full tests overwrite `.next`; stop local servers first. Never target production databases or services.
 
 ## Commit & Pull Request Guidelines
 

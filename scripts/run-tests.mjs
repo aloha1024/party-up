@@ -143,6 +143,9 @@ try {
       "--import",
       "tsx",
       "--test",
+      // Files share one SQLite database and HTTP service. Keep fixtures isolated;
+      // concurrency scenarios still run simultaneous operations inside each file.
+      "--test-concurrency=1",
       ...tests,
     ]);
   }
