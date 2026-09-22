@@ -8,6 +8,7 @@ const r: Reservation = {
   gameName: "Valorant",
   hostName: "Alex",
   isHost: false,
+  editVersion: 0,
   scheduledAt: "2030-01-01T12:00:00Z",
   maxPlayers: 2,
   description: "排位\n自带语音",

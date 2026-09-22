@@ -4,6 +4,7 @@ export type Reservation = {
   gameName: string;
   hostName: string;
   isHost: boolean;
+  editVersion: number;
   scheduledAt: string;
   maxPlayers: number;
   description: string;

@@ -1,0 +1,1 @@
+ALTER TABLE "GameReservation" ADD COLUMN "editVersion" INTEGER NOT NULL DEFAULT 0;

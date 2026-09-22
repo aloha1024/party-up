@@ -187,3 +187,22 @@ test("timeout also bounds an unfinished response body; reads use a reload messag
   await rejection;
   assert.equal(signal?.aborted, true);
 });
+
+test("client requests retain the server conflict code for a dedicated editor recovery flow", async (t) => {
+  t.mock.method(globalThis, "fetch", async () =>
+    Response.json(
+      {
+        error: "预约已被其他人修改",
+        code: "EDIT_CONFLICT",
+      },
+      { status: 409 },
+    ),
+  );
+  await assert.rejects(request("/edit", "PATCH"), (e: unknown) => {
+    assert.ok(e instanceof ClientRequestError);
+    assert.equal(e.status, 409);
+    assert.equal(e.serverCode, "EDIT_CONFLICT");
+    assert.equal(e.message, "预约已被其他人修改");
+    return true;
+  });
+});

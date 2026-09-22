@@ -8,6 +8,7 @@ services:
       DATABASE_URL: file:/app/data/reservations.db
       NODE_ENV: production
       NEXT_TELEMETRY_DISABLED: "1"
+      TRUST_PROXY: ${TRUST_PROXY:-0}
       ADMIN_USERNAME: ${ADMIN_USERNAME:-}
       ADMIN_PASSWORD_HASH: ${ADMIN_PASSWORD_HASH:-}
       ADMIN_SESSION_SECRET: ${ADMIN_SESSION_SECRET:-}

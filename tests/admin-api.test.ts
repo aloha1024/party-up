@@ -14,16 +14,39 @@ test(
     let reservationId: string | undefined;
     const auditPrefix = "audit-page-" + randomUUID();
     const original = await db.adminCredential.findMany();
-    const send = (path: string, method: string, data?: unknown, cookie = "") =>
-      fetch(`${base}${path}`, {
+    const send = async (
+      path: string,
+      method: string,
+      data?: unknown,
+      cookie = "",
+    ) => {
+      if (
+        path.startsWith("/api/reservations") &&
+        method !== "GET" &&
+        !cookie.includes("party_identity=")
+      ) {
+        const identityResponse = await fetch(base + "/api/identity", {
+          method: "POST",
+          headers: { Origin: base! },
+        });
+        cookie = [
+          cookie,
+          identityResponse.headers.get("set-cookie")!.split(";")[0],
+        ]
+          .filter(Boolean)
+          .join("; ");
+      }
+      return fetch(`${base}${path}`, {
         method,
         headers: {
           Origin: base!,
           Cookie: cookie,
           "Content-Type": "application/json",
+          "Idempotency-Key": randomUUID(),
         },
         body: data ? JSON.stringify(data) : undefined,
       });
+    };
     const passwordAfterFirstLogin = "first-login-password-123";
     const changedPassword = "changed-password-456";
     try {
@@ -379,6 +402,7 @@ test(
       const editUrl = `/api/reservations/${reservationId}`;
       const changes = {
         gameName: "Admin edited",
+        editVersion: 0,
         hostName: "Updated host",
         maxPlayers: 4,
         description: "Updated by admin",
@@ -393,12 +417,28 @@ test(
         (await send(editUrl, "PATCH", changes, currentCookie)).status,
         200,
       );
+      const staleEdit = await send(
+        editUrl,
+        "PATCH",
+        { ...changes, description: "stale overwrite" },
+        enabledCookie,
+      );
+      assert.equal(staleEdit.status, 409);
+      assert.equal((await staleEdit.json()).code, "EDIT_CONFLICT");
+      const latestEdit = (await (await send(editUrl, "GET")).json()).data;
+      assert.equal(latestEdit.editVersion, 1);
+      assert.equal(latestEdit.description, changes.description);
+      const { editVersion: ignoredVersion, ...missingVersion } = changes;
+      assert.equal(
+        (await send(editUrl, "PATCH", missingVersion, currentCookie)).status,
+        400,
+      );
       assert.equal(
         (
           await send(
             editUrl,
             "PATCH",
-            { ...changes, actorId: 999, actorName: "forged" },
+            { ...changes, editVersion: 1, actorId: 999, actorName: "forged" },
             enabledCookie,
           )
         ).status,

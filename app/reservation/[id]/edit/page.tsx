@@ -19,7 +19,7 @@ export default async function Page({
       );
     if (["STARTED", "CANCELLED"].includes(reservation.status))
       return <p role="alert">预约已开始或已取消，无法修改。</p>;
-    return <CreateForm reservation={reservation} />;
+    return <CreateForm key={reservation.id} reservation={reservation} />;
   } catch (e) {
     if (e instanceof AppError && e.status === 404) notFound();
     throw e;

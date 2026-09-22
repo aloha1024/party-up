@@ -1,19 +1,18 @@
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { z } from "zod";
 import { Prisma } from "@prisma/client";
 import { db } from "./db";
 import { recordAdminAction, type AuditActor } from "./admin-audit";
-import { createSchema, joinSchema } from "../lib/validation";
+import {
+  createSchema,
+  creationInputSchema,
+  editSchema,
+  joinSchema,
+} from "../lib/validation";
 import { getStatus } from "../lib/status";
-export class AppError extends Error {
-  constructor(
-    public code: string,
-    message: string,
-    public status = 400,
-  ) {
-    super(message);
-  }
-}
+import { AppError } from "./errors";
+export { AppError } from "./errors";
+import { writeTransaction } from "./request-budget";
 export const hashToken = (token: string) =>
   createHash("sha256").update(token).digest("hex");
 const include = {
@@ -25,6 +24,7 @@ type Row = Prisma.GameReservationGetPayload<{ include: typeof include }>;
 function serialize(r: Row, token?: string) {
   return {
     id: r.id,
+    editVersion: r.editVersion,
     gameName: r.gameName,
     hostName: r.hostName,
     isHost: !!token && r.hostTokenHash === hashToken(token),
@@ -47,23 +47,65 @@ export async function detail(id: string, token?: string) {
     throw new AppError("NOT_FOUND", "预约不存在或已被移除", 404);
   return serialize(r, token);
 }
-export async function createReservation(input: unknown, token: string) {
-  const data = createSchema.parse(input);
-  const r = await db.gameReservation.create({
-    data: {
-      ...data,
-      hostTokenHash: hashToken(token),
-      scheduledAt: new Date(data.scheduledAt),
-      participants: {
-        create: {
-          name: data.hostName,
-          nameKey: data.hostName.toLowerCase(),
-          tokenHash: hashToken(token),
+export async function createReservation(
+  input: unknown,
+  token: string,
+  key: string = randomUUID(),
+) {
+  const data = creationInputSchema.parse(input);
+  const ownerTokenHash = hashToken(token);
+  const inputHash = hashToken(JSON.stringify(data));
+  const proposedId = randomUUID();
+  const r = await writeTransaction(async (tx) => {
+    // First acquire a write lock; this also serializes retries of the same submission.
+    const submission = await tx.creationRequest.upsert({
+      where: { ownerTokenHash_key: { ownerTokenHash, key } },
+      create: { ownerTokenHash, key, inputHash, reservationId: proposedId },
+      update: { key },
+    });
+    if (submission.inputHash !== inputHash)
+      throw new AppError(
+        "SUBMISSION_CHANGED",
+        "该提交编号已用于其他内容，请核对上次预约后重新创建",
+        409,
+      );
+    const previous = await tx.gameReservation.findUnique({
+      where: { id: submission.reservationId },
+      include,
+    });
+    if (previous) {
+      if (previous.deletedAt)
+        throw new AppError(
+          "REMOVED",
+          "上次创建的预约已被移除，请核对后重新创建",
+          409,
+        );
+      return previous;
+    }
+    if (submission.reservationId !== proposedId)
+      throw new AppError(
+        "REMOVED",
+        "上次创建的预约已被永久删除，请核对后重新创建",
+        409,
+      );
+    createSchema.parse(data);
+    return tx.gameReservation.create({
+      data: {
+        ...data,
+        id: proposedId,
+        hostTokenHash: ownerTokenHash,
+        scheduledAt: new Date(data.scheduledAt),
+        participants: {
+          create: {
+            name: data.hostName,
+            nameKey: data.hostName.toLowerCase(),
+            tokenHash: ownerTokenHash,
+          },
         },
       },
-    },
-    include,
-  });
+      include,
+    });
+  }, true);
   return serialize(r, token);
 }
 // The first operation is a write: SQLite acquires its writer lock; PostgreSQL locks
@@ -73,45 +115,26 @@ async function mutate(
   operation: (tx: Prisma.TransactionClient, r: Row) => Promise<void>,
   includeDeleted = false,
 ) {
-  for (let attempt = 0; attempt < 4; attempt++) {
-    try {
-      return await db.$transaction(
-        async (tx) => {
-          const locked = await tx.gameReservation.updateMany({
-            where: { id, ...(includeDeleted ? {} : { deletedAt: null }) },
-            data: { revision: { increment: 1 } },
-          });
-          if (!locked.count) throw new AppError("NOT_FOUND", "预约不存在", 404);
-          const r = (await tx.gameReservation.findUnique({
-            where: { id },
-            include,
-          }))!;
-          await operation(tx, r);
-        },
-        {
-          isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
-          maxWait: 10000,
-          timeout: 15000,
-        },
-      );
-    } catch (e) {
-      if (
-        e instanceof Prisma.PrismaClientKnownRequestError &&
-        ["P2034", "P1008", "P2028"].includes(e.code) &&
-        attempt < 3
-      ) {
-        await new Promise((resolve) => setTimeout(resolve, 40 * (attempt + 1)));
-        continue;
-      }
-      if (
-        e instanceof Prisma.PrismaClientKnownRequestError &&
-        e.code === "P2002"
-      )
-        throw new AppError("DUPLICATE", "该昵称已被使用，或你已经报名", 409);
-      throw e;
-    }
+  try {
+    return await writeTransaction(async (tx) => {
+      const locked = await tx.gameReservation.updateMany({
+        where: { id, ...(includeDeleted ? {} : { deletedAt: null }) },
+        data: { revision: { increment: 1 } },
+      });
+      if (!locked.count) throw new AppError("NOT_FOUND", "预约不存在", 404);
+      const r = (await tx.gameReservation.findUnique({
+        where: { id },
+        include,
+      }))!;
+      await operation(tx, r);
+    });
+  } catch (e) {
+    if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002")
+      throw new AppError("DUPLICATE", "该昵称已被使用，或你已经报名", 409);
+    throw e;
   }
 }
+
 function checkActive(r: Row) {
   const state = getStatus(r, r.participants.length);
   if (state === "CANCELLED") throw new AppError("CANCELLED", "预约已取消", 409);
@@ -177,7 +200,7 @@ export async function editReservation(
   // Set only by the server after verifying the administrator session.
   administrator: AuditActor | null = null,
 ) {
-  const data = createSchema.parse(input);
+  const { editVersion, ...data } = editSchema.parse(input);
   await mutate(id, async (tx, r) => {
     if (
       !administrator &&
@@ -189,6 +212,14 @@ export async function editReservation(
         403,
       );
     checkActive(r);
+    // Compare the version while holding the same lock used by roster mutations.
+    // Failed edits roll back the lock revision, nickname change and audit write.
+    if (r.editVersion !== editVersion)
+      throw new AppError(
+        "EDIT_CONFLICT",
+        "预约已被其他人修改。当前输入已保留，请查看最新信息后重新编辑。",
+        409,
+      );
     // Revalidate time after acquiring the lock, in case this request waited.
     createSchema.parse(data);
     if (data.maxPlayers < r.participants.length)
@@ -202,7 +233,11 @@ export async function editReservation(
     }
     await tx.gameReservation.update({
       where: { id },
-      data: { ...data, scheduledAt: new Date(data.scheduledAt) },
+      data: {
+        ...data,
+        scheduledAt: new Date(data.scheduledAt),
+        editVersion: { increment: 1 },
+      },
     });
     if (administrator)
       await recordAdminAction(tx, administrator, "RESERVATION_EDIT", {

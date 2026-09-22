@@ -1,3 +1,4 @@
+import { writeTransaction } from "./request-budget";
 import { Prisma } from "@prisma/client";
 import { z } from "zod";
 import { cookies } from "next/headers";
@@ -126,7 +127,7 @@ export async function createAdministrator(input: unknown) {
     throw new AppError("DUPLICATE_ACCOUNT", "该管理员账号已存在", 409);
   const passwordHash = await hashPassword(data.password);
   try {
-    return await db.$transaction(async (tx) => {
+    return await writeTransaction(async (tx) => {
       const account = await tx.adminCredential.create({
         data: { username: data.username, passwordHash },
         select: { id: true, username: true, mustChangePassword: true },
@@ -150,7 +151,7 @@ export async function replaceAdminPassword(
   newPassword: string,
 ) {
   const passwordHash = await hashPassword(newPassword);
-  return db.$transaction(async (tx) => {
+  return writeTransaction(async (tx) => {
     const updated = await tx.adminCredential.updateMany({
       where: { id: adminId, passwordHash: currentHash, isActive: true },
       data: {

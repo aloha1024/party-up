@@ -26,6 +26,8 @@ Use Node.js 22.13+ and npm.
 - `npm run typecheck`: check TypeScript.
 - `npm test`: build and run tests with a temporary database and independent HTTP service.
 - `npm run test:unit`: skip the build and HTTP tests.
+- `npm run test:e2e`: isolated Playwright tests; install Chromium first.
+- `npm run benchmark:queries`: synthetic in-memory query comparison.
 - `npm run build` / `npm start`: build / run production.
 - `docker compose up -d --build`: deploy using Docker.
 
@@ -37,7 +39,7 @@ Use kebab-case filenames, PascalCase components/types, and camelCase functions/v
 
 ## Testing Guidelines
 
-Tests use `node:test`, `node:assert/strict`, and `tsx`; name files `tests/*.test.ts`. Import `./support/isolated` before application database imports.
+Unit/HTTP tests use `node:test`, `node:assert/strict`, and `tsx`; name files `tests/*.test.ts`. Browser tests use Playwright in `tests/e2e/*.spec.ts`. Import `./support/isolated` before application database imports.
 
 Cover authorization, validation, state transitions, concurrent mutations, and migration preservation when affected. No numeric coverage threshold exists. Run type checking and relevant tests before review. Full tests overwrite `.next`; stop local servers first. Never target production databases or services.
 

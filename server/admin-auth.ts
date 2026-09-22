@@ -82,12 +82,3 @@ export function readAdminSession(token?: string, now = Date.now()) {
     return null;
   return { adminId: Number(match[1]), sessionVersion: Number(match[3]) };
 }
-
-const state = globalThis as unknown as {
-  adminAttempts?: { reset: number; count: number };
-};
-export function allowLoginAttempt(now = Date.now()) {
-  if (!state.adminAttempts || state.adminAttempts.reset <= now)
-    state.adminAttempts = { reset: now + 60000, count: 0 };
-  return ++state.adminAttempts.count <= 10;
-}

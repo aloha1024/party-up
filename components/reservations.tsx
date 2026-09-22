@@ -1,6 +1,11 @@
 "use client";
+import {
+  ensureBrowserIdentity,
+  submissionKey,
+  clearSubmission,
+} from "@/lib/browser-identity";
 import { z } from "zod";
-import { request } from "@/lib/client-request";
+import { ClientRequestError, request } from "@/lib/client-request";
 import { useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -164,7 +169,14 @@ export function ReservationList({ listing }: { listing: ReservationPage }) {
     </>
   );
 }
-export function CreateForm({ reservation }: { reservation?: Reservation }) {
+export function CreateForm({
+  reservation: initialReservation,
+}: {
+  reservation?: Reservation;
+}) {
+  // Keep the version tied to this form's original values across route refreshes.
+  const [reservation] = useState(initialReservation);
+  const [conflict, setConflict] = useState(false);
   const localTime = reservation
     ? new Date(Date.parse(reservation.scheduledAt) + 8 * 3600000).toISOString()
     : "";
@@ -208,14 +220,23 @@ export function CreateForm({ reservation }: { reservation?: Reservation }) {
           }
           startTransition(async () => {
             try {
+              await ensureBrowserIdentity();
               const r = await request(
                 reservation
                   ? `/api/reservations/${reservation.id}`
                   : "/api/reservations",
                 reservation ? "PATCH" : "POST",
-                parsed.data,
-                { schema: z.object({ id: z.string().min(1) }) },
+                reservation
+                  ? { ...parsed.data, editVersion: reservation.editVersion }
+                  : parsed.data,
+                {
+                  schema: z.object({ id: z.string().min(1) }),
+                  ...(!reservation
+                    ? { idempotencyKey: submissionKey(parsed.data) }
+                    : {}),
+                },
               );
+              if (!reservation) clearSubmission();
               toast.success(
                 reservation ? "预约已更新" : "预约已创建，你已加入接龙",
               );
@@ -223,6 +244,11 @@ export function CreateForm({ reservation }: { reservation?: Reservation }) {
               router.refresh();
             } catch (e) {
               setError((e as Error).message);
+              if (
+                e instanceof ClientRequestError &&
+                e.serverCode === "EDIT_CONFLICT"
+              )
+                setConflict(true);
             }
           });
         }}
@@ -295,7 +321,39 @@ export function CreateForm({ reservation }: { reservation?: Reservation }) {
             {error}
           </p>
         )}
-        <Button className="w-full" disabled={pending}>
+        {conflict && reservation && (
+          <div className="space-y-3 rounded-xl border border-amber-300/30 bg-amber-300/5 p-4">
+            <p className="text-sm text-zinc-300">
+              输入尚未提交。可先在新窗口查看最新预约，再复制需要保留的内容；重新加载会清除当前未保存的输入。
+            </p>
+            <div className="flex flex-wrap gap-2">
+              <Button asChild variant="outline">
+                <a
+                  href={`/reservation/${reservation.id}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  查看最新预约（新窗口）
+                </a>
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => {
+                  if (
+                    window.confirm(
+                      "重新加载会清除当前未保存的输入。请先复制需要保留的内容，确定继续？",
+                    )
+                  )
+                    window.location.reload();
+                }}
+              >
+                重新加载编辑表单
+              </Button>
+            </div>
+          </div>
+        )}
+        <Button className="w-full" disabled={pending || conflict}>
           {pending ? <Loader2 className="animate-spin" /> : <Zap />}
           {pending
             ? "正在保存…"
@@ -357,6 +415,7 @@ export function ReservationDetail({
     }
     startTransition(async () => {
       try {
+        await ensureBrowserIdentity();
         await request(
           `/api/reservations/${r.id}/participants`,
           method,

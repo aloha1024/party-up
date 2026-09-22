@@ -19,12 +19,14 @@ model GameReservation {
   deletedAt          DateTime?
   cancellationReason String        @default("")
   revision           Int           @default(0)
+  editVersion        Int           @default(0)
   createdAt          DateTime      @default(now())
   updatedAt          DateTime      @updatedAt
   participants       Participant[]
 
   @@index([scheduledAt])
-  @@index([deletedAt, scheduledAt])
+  @@index([deletedAt, scheduledAt, id])
+  @@index([deletedAt(sort: Desc), id])
 }
 
 model Participant {
@@ -65,6 +67,18 @@ model AdminAuditLog {
   createdAt   DateTime @default(now())
 
   @@index([createdAt, id])
-  @@index([action, createdAt])
+  @@index([action, createdAt(sort: Desc), id(sort: Desc)])
   @@index([targetType, targetId])
+}
+
+// No foreign key: a retry must never recreate a permanently deleted reservation.
+model CreationRequest {
+  id             String   @id @default(cuid())
+  ownerTokenHash String
+  key            String
+  inputHash      String
+  reservationId  String   @unique
+  createdAt      DateTime @default(now())
+
+  @@unique([ownerTokenHash, key])
 }

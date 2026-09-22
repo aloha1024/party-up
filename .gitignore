@@ -14,3 +14,6 @@ admin-bootstrap.json
 backups/
 .backup.lock
 server.env
+
+playwright-report/
+test-results/

@@ -1,3 +1,4 @@
+import { limitLogin } from "@/server/rate-limit";
 import { cookies } from "next/headers";
 import { NextRequest } from "next/server";
 import { z } from "zod";
@@ -11,7 +12,6 @@ import {
 import {
   ADMIN_COOKIE,
   SESSION_SECONDS,
-  allowLoginAttempt,
   createAdminSession,
   verifyPasswordHash,
 } from "@/server/admin-auth";
@@ -32,12 +32,6 @@ export const POST = (req: NextRequest) =>
   respond(
     req,
     async () => {
-      if (!allowLoginAttempt())
-        throw new AppError(
-          "RATE_LIMIT",
-          "登录尝试过于频繁，请一分钟后重试",
-          429,
-        );
       const input = z
         .object({
           username: z.string().trim().min(1).max(64),
@@ -45,6 +39,7 @@ export const POST = (req: NextRequest) =>
           newPassword: passwordSchema.optional(),
         })
         .parse(await body(req));
+      limitLogin(req.headers, input.username);
       const { admin, valid } = await verifyAdminCredentials(
         input.username,
         input.password,

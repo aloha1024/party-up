@@ -37,7 +37,7 @@ test("upgrade retains reservations, roster, root and moderator credentials with 
     );
     assert.deepEqual(
       { ...db.prepare("SELECT * FROM GameReservation").get()! },
-      { ...before, deletedAt: null, cancellationReason: "" },
+      { ...before, deletedAt: null, cancellationReason: "", editVersion: 0 },
     );
     assert.deepEqual(db.prepare("SELECT * FROM Participant").all(), roster);
     assert.deepEqual(

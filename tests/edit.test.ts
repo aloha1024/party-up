@@ -18,6 +18,7 @@ const data = () => ({
   maxPlayers: 3,
   scheduledAt: new Date(Date.now() + 3600000).toISOString(),
   description: "",
+  editVersion: 0,
 });
 after(async () => {
   await db.gameReservation.deleteMany({ where: { id: { in: ids } } });
@@ -48,7 +49,16 @@ test("only creator edits, ownership survives leaving, same URL and roster remain
   assert.equal(updated.participants[0].name, "NewAlex");
   assert.equal(updated.participants[0].joinedAt, r.participants[0].joinedAt);
   await leaveReservation(r.id, token);
-  assert.equal((await editReservation(r.id, input, token)).isHost, true);
+  assert.equal(
+    (
+      await editReservation(
+        r.id,
+        { ...input, editVersion: updated.editVersion },
+        token,
+      )
+    ).isHost,
+    true,
+  );
 });
 test("editing prevents overcapacity and nickname collisions and blocks started/legacy records", async () => {
   const token = randomUUID();

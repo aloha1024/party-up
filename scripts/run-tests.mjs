@@ -14,6 +14,7 @@ const env = {
   ...process.env,
   DATABASE_URL: databaseUrl,
   NODE_ENV: "test",
+  TRUST_PROXY: "0",
   PARTY_TEST_ROOT: root,
   PARTY_TEST_TOKEN: token,
   ADMIN_USERNAME: "admin",
@@ -116,7 +117,7 @@ try {
       )
         throw new Error("测试服务提前停止");
       try {
-        const response = await fetch(baseUrl + "/api/reservations", {
+        const response = await fetch(baseUrl + "/api/health", {
           signal: AbortSignal.timeout(1000),
         });
         if (response.ok) {
@@ -129,18 +130,22 @@ try {
     if (!ready) throw new Error("测试服务启动超时");
   }
   if (interrupted) throw new Error("测试已中断");
-  const tests = (await readdir("tests"))
-    .filter((name) => name.endsWith(".test.ts"))
-    .sort()
-    .map((name) => "tests/" + name);
-  await run([
-    "--import",
-    "./scripts/test-preload.mjs",
-    "--import",
-    "tsx",
-    "--test",
-    ...tests,
-  ]);
+  if (process.argv.includes("--e2e")) {
+    await run(["node_modules/@playwright/test/cli.js", "test"]);
+  } else {
+    const tests = (await readdir("tests"))
+      .filter((name) => name.endsWith(".test.ts"))
+      .sort()
+      .map((name) => "tests/" + name);
+    await run([
+      "--import",
+      "./scripts/test-preload.mjs",
+      "--import",
+      "tsx",
+      "--test",
+      ...tests,
+    ]);
+  }
 } catch (error) {
   console.error(error.message);
   process.exitCode = 1;

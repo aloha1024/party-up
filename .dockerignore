@@ -20,3 +20,6 @@ npm-debug.log*
 .backup.lock
 **/admin-bootstrap.json
 **/server.env
+
+playwright-report/
+test-results/

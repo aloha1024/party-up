@@ -1,4 +1,5 @@
 "use client";
+import { ensureBrowserIdentity } from "@/lib/browser-identity";
 import { request } from "@/lib/client-request";
 import { useState, useTransition, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
@@ -21,6 +22,7 @@ export function CancelReservation({ id }: { id: string }) {
     setError("");
     start(async () => {
       try {
+        await ensureBrowserIdentity();
         await request("/api/reservations/" + id + "/cancel", "POST", {
           reason,
         });

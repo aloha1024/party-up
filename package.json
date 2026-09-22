@@ -12,7 +12,9 @@
     "db:dev": "node scripts/ensure-db.mjs && prisma migrate dev",
     "test": "node scripts/run-tests.mjs",
     "typecheck": "tsc --noEmit",
-    "test:unit": "node scripts/run-tests.mjs --unit"
+    "test:unit": "node scripts/run-tests.mjs --unit",
+    "test:e2e": "node scripts/run-tests.mjs --e2e",
+    "benchmark:queries": "node scripts/benchmark-queries.mjs"
   },
   "dependencies": {
     "@prisma/client": "6.19.0",
@@ -25,19 +27,20 @@
     "react-dom": "^19.2.0",
     "sonner": "^2.0.0",
     "tailwind-merge": "^3.0.0",
-    "zod": "^4.0.0"
+    "zod": "^4.0.0",
+    "prisma": "6.19.0"
   },
   "overrides": {
     "effect": "^3.20.0",
     "deepmerge-ts": "^8.0.0"
   },
   "devDependencies": {
+    "@playwright/test": "^1.63.0",
     "@tailwindcss/postcss": "^4.0.0",
     "@types/node": "^22.0.0",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
     "prettier": "^3.9.6",
-    "prisma": "6.19.0",
     "tailwindcss": "^4.0.0",
     "tsx": "^4.20.0",
     "typescript": "^5.9.0"

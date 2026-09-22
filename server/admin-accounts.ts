@@ -1,3 +1,4 @@
+import { writeTransaction } from "./request-budget";
 import { z } from "zod";
 import { db } from "./db";
 import { recordAdminAction } from "./admin-audit";
@@ -37,7 +38,7 @@ export async function manageAdministrator(id: number, input: unknown) {
           mustChangePassword: true,
         }
       : { isActive: action.action === "enable" };
-  return db.$transaction(async (tx) => {
+  return writeTransaction(async (tx) => {
     const result = await tx.adminCredential.updateMany({
       where: { id },
       data: { ...data, sessionVersion: { increment: 1 } },

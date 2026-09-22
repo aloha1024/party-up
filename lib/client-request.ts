@@ -3,12 +3,14 @@ import type { ZodType } from "zod";
 type RequestOptions<T> = {
   schema?: ZodType<T>;
   timeoutMs?: number;
+  idempotencyKey?: string;
 };
 export class ClientRequestError extends Error {
   constructor(
     message: string,
     public readonly code: "HTTP" | "NETWORK" | "TIMEOUT" | "INVALID_RESPONSE",
     public readonly status?: number,
+    public readonly serverCode?: string,
   ) {
     super(message);
     this.name = "ClientRequestError";
@@ -20,7 +22,7 @@ export async function request<T = unknown>(
   url: string,
   method = "GET",
   data?: unknown,
-  { schema, timeoutMs = 15000 }: RequestOptions<T> = {},
+  { schema, timeoutMs = 15000, idempotencyKey }: RequestOptions<T> = {},
 ): Promise<T> {
   const controller = new AbortController();
   const uncertain =
@@ -47,6 +49,7 @@ export async function request<T = unknown>(
         method,
         headers: {
           Accept: "application/json",
+          ...(idempotencyKey ? { "Idempotency-Key": idempotencyKey } : {}),
           ...(data === undefined ? {} : { "Content-Type": "application/json" }),
         },
         body: data === undefined ? undefined : JSON.stringify(data),
@@ -93,6 +96,7 @@ export async function request<T = unknown>(
         message + (response.status >= 500 ? uncertain : ""),
         "HTTP",
         response.status,
+        typeof envelope?.code === "string" ? envelope.code : undefined,
       );
     }
     if (!envelope || !Object.hasOwn(envelope, "data"))

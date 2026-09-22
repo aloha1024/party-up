@@ -24,6 +24,7 @@ const input = () => ({
   scheduledAt: new Date(Date.now() + 3600000).toISOString(),
   maxPlayers: 3,
   description: "private-notes-do-not-log",
+  editVersion: 0,
 });
 async function create() {
   const token = randomUUID(),
@@ -51,7 +52,7 @@ test("admin reservation actions retain actor/object snapshots after purge withou
   );
   await editReservation(
     row.id,
-    { ...data, gameName: "Audit renamed" },
+    { ...data, editVersion: 1, gameName: "Audit renamed" },
     "admin",
     actor,
   );

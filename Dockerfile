@@ -13,13 +13,15 @@ RUN npm ci
 COPY . .
 # No application database is copied into the image or needed for compilation.
 ENV DATABASE_URL=file:/app/data/reservations.db
-RUN npm run build && mkdir -p public
+RUN npm run build && mkdir -p public \
+    && npm prune --omit=dev \
+    && rm -rf .next/cache
 
 FROM base AS runtime
 ENV NODE_ENV=production \
     DATABASE_URL=file:/app/data/reservations.db \
     PORT=3000
-# Keep the locked dependencies, including Prisma CLI, for offline startup migrations.
+# Keep production dependencies and Prisma CLI for offline startup migrations.
 COPY --from=build --chown=node:node /app/node_modules ./node_modules
 COPY --from=build --chown=node:node /app/.next ./.next
 COPY --from=build --chown=node:node /app/public ./public
@@ -32,5 +34,5 @@ RUN mkdir -p /app/data && chown node:node /app/data \
 USER node
 EXPOSE 3000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=60s --retries=3 \
-    CMD node -e "fetch('http://127.0.0.1:3000/api/reservations').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+    CMD node -e "fetch('http://127.0.0.1:3000/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
 ENTRYPOINT ["/app/scripts/docker-entrypoint.sh"]

@@ -60,7 +60,12 @@ test("cancellation authorizes owner/admin, validates reason and freezes original
   );
   await assert.rejects(leaveReservation(r.id, token), code("CANCELLED"));
   await assert.rejects(
-    editReservation(r.id, input(), token, actor),
+    editReservation(
+      r.id,
+      { ...input(), editVersion: r.editVersion },
+      token,
+      actor,
+    ),
     code("CANCELLED"),
   );
   const another = await create();
@@ -103,7 +108,12 @@ test("recycle bin hides every public operation, restore preserves identity/order
   );
   await assert.rejects(leaveReservation(r.id, token), code("NOT_FOUND"));
   await assert.rejects(
-    editReservation(r.id, input(), token, actor),
+    editReservation(
+      r.id,
+      { ...input(), editVersion: r.editVersion },
+      token,
+      actor,
+    ),
     code("NOT_FOUND"),
   );
   await assert.rejects(
