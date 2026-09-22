@@ -28,7 +28,13 @@ if [[ "$1" == compose ]]; then
     'ps -a -q web') echo fake-container ;;
     'down -v --remove-orphans') touch "$MOCK_STATE/cleaned" ;;
     'images -q web') echo fake-image ;;
-    'exec -T web node -e '*) touch "$MOCK_STATE/runtime-check" ;;
+    'exec -T web node -e '*)
+      touch "$MOCK_STATE/runtime-check"
+      if [[ "$MOCK_MODE" == test-dependency ]]; then
+        echo 'Unexpected test dependency in production image: @playwright/test' >&2
+        exit 1
+      fi
+      ;;
     'exec -T web node node_modules/prisma/build/index.js --version')
       touch "$MOCK_STATE/cli-check"
       [[ "$MOCK_MODE" != cli-failure ]] || exit 1
@@ -121,4 +127,9 @@ run_case cli-failure failure
 test -f "$MOCK_STATE/replayed"
 test -f "$MOCK_STATE/cli-check"
 test ! -f "$MOCK_STATE/image-check"
-echo 'Docker smoke orchestration: 5 scenarios passed (mocked Docker/curl)'
+run_case test-dependency failure
+test -f "$MOCK_STATE/runtime-check"
+test ! -f "$MOCK_STATE/cli-check"
+test ! -f "$MOCK_STATE/image-check"
+grep -q 'Unexpected test dependency in production image: @playwright/test' "$MOCK_STATE/output"
+echo 'Docker smoke orchestration: 6 scenarios passed (mocked Docker/curl)'

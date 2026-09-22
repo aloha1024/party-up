@@ -13,9 +13,14 @@ RUN npm ci
 COPY . .
 # No application database is copied into the image or needed for compilation.
 ENV DATABASE_URL=file:/app/data/reservations.db
+# Next lists Playwright as an optional peer, so npm retains its devOptional
+# packages even with --omit=dev/peer. Remove only browser test tools; keep
+# optional runtime dependencies such as SWC and sharp.
 RUN npm run build && mkdir -p public \
     && npm prune --omit=dev \
-    && rm -rf .next/cache
+    && rm -rf .next/cache node_modules/@playwright/test \
+        node_modules/playwright node_modules/playwright-core \
+        node_modules/.bin/playwright node_modules/.bin/playwright-core
 
 FROM base AS runtime
 ENV NODE_ENV=production \
