@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState, useTransition } from "react";
+import { useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
@@ -19,8 +19,18 @@ import { Input } from "@/components/ui/input";
 import { createSchema, joinSchema } from "@/lib/validation";
 import { getStatus, statusLabels } from "@/lib/status";
 import { formatTime } from "@/lib/utils";
+import { CancelReservation } from "@/components/cancel-reservation";
 import { ReservationShare } from "@/components/reservation-share";
-import type { Reservation } from "@/types/reservation";
+import {
+  ReservationFilters,
+  ReservationPagination,
+} from "@/components/reservation-filters";
+import { useReservationRefresh } from "@/components/use-reservation-refresh";
+import type {
+  Reservation,
+  ReservationPage,
+  ReservationSummary,
+} from "@/types/reservation";
 async function request(url: string, method = "GET", data?: unknown) {
   const res = await fetch(url, {
     method,
@@ -32,8 +42,15 @@ async function request(url: string, method = "GET", data?: unknown) {
   if (!res.ok) throw new Error(result.error || "请求失败，请重试");
   return result.data;
 }
-function Badge({ reservation: r }: { reservation: Reservation }) {
-  const state = getStatus(r, r.participants.length);
+function Badge({
+  reservation: r,
+}: {
+  reservation: Reservation | ReservationSummary;
+}) {
+  const state = getStatus(
+    r,
+    "participants" in r ? r.participants.length : r.participantCount,
+  );
   return (
     <span
       className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium ${state === "OPEN" ? "bg-lime-300/10 text-lime-300" : "bg-white/5 text-zinc-400"}`}
@@ -45,31 +62,14 @@ function Badge({ reservation: r }: { reservation: Reservation }) {
     </span>
   );
 }
-function useRefresh() {
-  const router = useRouter();
-  const [, tick] = useState(0);
-  useEffect(() => {
-    const refresh = () => {
-      tick((v) => v + 1);
-      router.refresh();
-    };
-    const timer = setInterval(refresh, 15000);
-    window.addEventListener("focus", refresh);
-    return () => {
-      clearInterval(timer);
-      window.removeEventListener("focus", refresh);
-    };
-  }, [router]);
-}
-export function ReservationList({
-  reservations,
-}: {
-  reservations: Reservation[];
-}) {
-  useRefresh();
-  const open = reservations.filter(
-    (r) => getStatus(r, r.participants.length) === "OPEN",
-  ).length;
+export function ReservationList({ listing }: { listing: ReservationPage }) {
+  useReservationRefresh();
+  const reservations = listing.items;
+  const filtered = !!(
+    listing.filters.q ||
+    listing.filters.date ||
+    listing.filters.view !== "all"
+  );
   return (
     <>
       <div className="mb-10 flex flex-wrap items-end justify-between gap-5">
@@ -84,15 +84,16 @@ export function ReservationList({
         </div>
         <div className="flex items-center gap-2 text-sm text-zinc-400">
           <span className="size-2 rounded-full bg-lime-300" />
-          {open} 场正在集结
+          {listing.total} 场预约
         </div>
       </div>
+      <ReservationFilters listing={listing} />
       <div className="mb-6 flex items-center justify-between border-b border-white/10 pb-4">
         <span className="flex items-center gap-2 text-sm font-medium">
           <Gamepad2 size={18} className="text-lime-300" />
-          全部预约{" "}
+          {filtered ? "筛选结果" : "全部预约"}{" "}
           <span className="ml-1 text-zinc-500">
-            {reservations.length.toString().padStart(2, "0")}
+            {listing.total.toString().padStart(2, "0")}
           </span>
         </span>
         <span className="text-xs text-zinc-500">按开玩时间排序 · 北京时间</span>
@@ -127,7 +128,7 @@ export function ReservationList({
                   <div
                     className="h-1 rounded-full bg-lime-300/70"
                     style={{
-                      width: `${(r.participants.length / r.maxPlayers) * 100}%`,
+                      width: `${(r.participantCount / r.maxPlayers) * 100}%`,
                     }}
                   />
                 </div>
@@ -135,7 +136,7 @@ export function ReservationList({
                   <span className="flex items-center gap-2 text-sm text-zinc-400">
                     <Users size={16} />
                     <strong className="text-white">
-                      {r.participants.length}
+                      {r.participantCount}
                     </strong>{" "}
                     / {r.maxPlayers} 人
                   </span>
@@ -151,18 +152,23 @@ export function ReservationList({
       ) : (
         <div className="panel flex min-h-80 flex-col items-center justify-center px-6 text-center">
           <Gamepad2 size={48} strokeWidth={1} className="mb-5 text-lime-300" />
-          <h2 className="text-xl font-semibold">大厅已就绪，等你开第一局</h2>
+          <h2 className="text-xl font-semibold">
+            {filtered ? "没有符合条件的预约" : "大厅已就绪，等你开第一局"}
+          </h2>
           <p className="mb-6 mt-3 text-sm text-zinc-400">
-            选个游戏、定好时间，把链接发给队友。
+            {filtered
+              ? "试试其他游戏名称、日期或状态，或清除筛选条件。"
+              : "选个游戏、定好时间，把链接发给队友。"}
           </p>
           <Button asChild>
             <Link href="/reservation/new">
               <Plus />
-              创建第一场预约
+              创建预约
             </Link>
           </Button>
         </div>
       )}
+      <ReservationPagination listing={listing} />
     </>
   );
 }
@@ -340,11 +346,11 @@ export function ReservationDetail({
   reservation: Reservation;
   admin?: boolean;
 }) {
-  useRefresh();
   const router = useRouter();
   const [name, setName] = useState("");
   const [error, setError] = useState("");
   const [pending, startTransition] = useTransition();
+  useReservationRefresh(true, pending);
   const me = r.participants.find((p) => p.isMe);
   const state = getStatus(r, r.participants.length);
   function mutate(method: "POST" | "DELETE") {
@@ -390,11 +396,22 @@ export function ReservationDetail({
         </div>
         <ReservationShare reservation={r} />
         {(r.isHost || admin) && !["STARTED", "CANCELLED"].includes(state) && (
+          <CancelReservation id={r.id} />
+        )}
+        {(r.isHost || admin) && !["STARTED", "CANCELLED"].includes(state) && (
           <Button asChild variant="outline">
             <Link href={`/reservation/${r.id}/edit`}>编辑预约</Link>
           </Button>
         )}
       </div>
+      {state === "CANCELLED" && (
+        <div role="status" className="panel mb-6 p-5">
+          <h2 className="font-semibold">预约已取消</h2>
+          <p className="mt-2 whitespace-pre-wrap break-words text-sm text-zinc-400">
+            {r.cancellationReason || "发起人或管理员已取消本次预约。"}
+          </p>
+        </div>
+      )}
       <div className="grid items-start gap-6 lg:grid-cols-[1fr_340px]">
         <section className="panel order-last overflow-hidden lg:order-first">
           <div className="flex items-center justify-between border-b border-white/10 p-6">

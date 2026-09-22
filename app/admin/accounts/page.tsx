@@ -10,7 +10,12 @@ export default async function Page() {
   const admin = await currentAdmin();
   if (!admin || !canCreateAdministrators(admin)) redirect("/admin");
   const accounts = await db.adminCredential.findMany({
-    select: { id: true, username: true, mustChangePassword: true },
+    select: {
+      id: true,
+      username: true,
+      mustChangePassword: true,
+      isActive: true,
+    },
     orderBy: { id: "asc" },
   });
   return (

@@ -8,20 +8,23 @@ datasource db {
 }
 
 model GameReservation {
-  id            String        @id @default(cuid())
-  gameName      String
-  hostName      String
-  hostTokenHash String?
-  scheduledAt   DateTime
-  maxPlayers    Int
-  description   String        @default("")
-  status        String        @default("OPEN")
-  revision      Int           @default(0)
-  createdAt     DateTime      @default(now())
-  updatedAt     DateTime      @updatedAt
-  participants  Participant[]
+  id                 String        @id @default(cuid())
+  gameName           String
+  hostName           String
+  hostTokenHash      String?
+  scheduledAt        DateTime
+  maxPlayers         Int
+  description        String        @default("")
+  status             String        @default("OPEN")
+  deletedAt          DateTime?
+  cancellationReason String        @default("")
+  revision           Int           @default(0)
+  createdAt          DateTime      @default(now())
+  updatedAt          DateTime      @updatedAt
+  participants       Participant[]
 
   @@index([scheduledAt])
+  @@index([deletedAt, scheduledAt])
 }
 
 model Participant {
@@ -43,6 +46,7 @@ model AdminCredential {
   username             String   @unique
   passwordHash         String
   mustChangePassword   Boolean  @default(true)
+  isActive             Boolean  @default(true)
   sessionVersion       Int      @default(0)
   bootstrapFingerprint String   @default("")
   createdAt            DateTime @default(now())

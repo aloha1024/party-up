@@ -4,3 +4,13 @@ node_modules/
 *.db
 *.db-journal
 *.tsbuildinfo
+
+# Runtime secrets and SQLite sidecars
+.env.*
+!.env.example
+*.db-wal
+*.db-shm
+admin-bootstrap.json
+backups/
+.backup.lock
+server.env

@@ -1,6 +1,7 @@
 import { test } from "node:test";
+import { DatabaseSync } from "node:sqlite";
 import assert from "node:assert/strict";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, readdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { scryptSync } from "node:crypto";
@@ -18,13 +19,17 @@ test("Docker initializes admin once, preserves changed passwords, and supports e
   const logs: string[] = [];
   const log = (message: string) => logs.push(message);
   try {
-    const migration = readFileSync(
-      "prisma/migrations/20260916000200_admin_credentials/migration.sql",
-      "utf8",
-    );
-    for (const statement of migration.split(";").filter((s) => s.trim())) {
-      await db.$executeRawUnsafe(statement);
+    const sqlite = new DatabaseSync(join(directory, "test.db"));
+    for (const directory of readdirSync("prisma/migrations")
+      .filter((name) => /^\d/.test(name))
+      .sort()) {
+      const migration = readFileSync(
+        "prisma/migrations/" + directory + "/migration.sql",
+        "utf8",
+      );
+      sqlite.exec(migration);
     }
+    sqlite.close();
     const env: Record<string, string> = {};
     await initializeDockerAdmin({ db, configPath, env, log });
     const first = await db.adminCredential.findUniqueOrThrow({
@@ -58,13 +63,6 @@ test("Docker initializes admin once, preserves changed passwords, and supports e
     assert.equal(restarted.sessionVersion, 7);
     assert.equal(logs.join("\n").includes(password), false);
 
-    const upgrade = readFileSync(
-      "prisma/migrations/20260918000100_multiple_admins/migration.sql",
-      "utf8",
-    );
-    for (const statement of upgrade.split(";").filter((s) => s.trim())) {
-      await db.$executeRawUnsafe(statement);
-    }
     const migrated = await db.adminCredential.findUniqueOrThrow({
       where: { id: 1 },
     });

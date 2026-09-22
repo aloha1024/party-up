@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { z } from "zod";
 import { Prisma } from "@prisma/client";
 import { db } from "./db";
 import { createSchema, joinSchema } from "../lib/validation";
@@ -30,6 +31,7 @@ function serialize(r: Row, token?: string) {
     maxPlayers: r.maxPlayers,
     description: r.description,
     status: getStatus(r, r.participants.length),
+    cancellationReason: r.cancellationReason,
     participants: r.participants.map((p) => ({
       id: p.id,
       name: p.name,
@@ -38,24 +40,10 @@ function serialize(r: Row, token?: string) {
     })),
   };
 }
-export async function listReservations(token?: string) {
-  const reservations = await db.gameReservation.findMany({
-    include,
-    orderBy: [{ scheduledAt: "asc" }, { id: "asc" }],
-  });
-  const now = Date.now();
-  // Stable sorting preserves chronological order within each group.
-  return reservations
-    .sort(
-      (a, b) =>
-        Number(a.scheduledAt.getTime() <= now) -
-        Number(b.scheduledAt.getTime() <= now),
-    )
-    .map((r) => serialize(r, token));
-}
 export async function detail(id: string, token?: string) {
   const r = await db.gameReservation.findUnique({ where: { id }, include });
-  if (!r) throw new AppError("NOT_FOUND", "预约不存在或已被移除", 404);
+  if (!r || r.deletedAt)
+    throw new AppError("NOT_FOUND", "预约不存在或已被移除", 404);
   return serialize(r, token);
 }
 export async function createReservation(input: unknown, token: string) {
@@ -82,13 +70,14 @@ export async function createReservation(input: unknown, token: string) {
 async function mutate(
   id: string,
   operation: (tx: Prisma.TransactionClient, r: Row) => Promise<void>,
+  includeDeleted = false,
 ) {
   for (let attempt = 0; attempt < 4; attempt++) {
     try {
       return await db.$transaction(
         async (tx) => {
           const locked = await tx.gameReservation.updateMany({
-            where: { id },
+            where: { id, ...(includeDeleted ? {} : { deletedAt: null }) },
             data: { revision: { increment: 1 } },
           });
           if (!locked.count) throw new AppError("NOT_FOUND", "预约不存在", 404);
@@ -170,7 +159,10 @@ export async function leaveReservation(id: string, token: string) {
 // Caller must enforce administrator authorization. The roster shares this lock.
 export async function deleteReservation(id: string) {
   await mutate(id, async (tx) => {
-    await tx.gameReservation.delete({ where: { id } });
+    await tx.gameReservation.update({
+      where: { id },
+      data: { deletedAt: new Date() },
+    });
   });
 }
 export async function editReservation(
@@ -209,4 +201,81 @@ export async function editReservation(
     });
   });
   return detail(id, token);
+}
+
+const cancellationSchema = z
+  .object({
+    reason: z
+      .string()
+      .trim()
+      .min(1, "请填写取消原因")
+      .max(300, "取消原因最多 300 字"),
+  })
+  .strict();
+export async function cancelReservation(
+  id: string,
+  input: unknown,
+  token: string,
+  administrator = false,
+) {
+  const { reason } = cancellationSchema.parse(input);
+  await mutate(id, async (tx, r) => {
+    if (
+      !administrator &&
+      (!r.hostTokenHash || r.hostTokenHash !== hashToken(token))
+    )
+      throw new AppError("FORBIDDEN", "只有发起人或管理员可以取消预约", 403);
+    checkActive(r);
+    await tx.gameReservation.update({
+      where: { id },
+      data: { status: "CANCELLED", cancellationReason: reason },
+    });
+  });
+  return detail(id, token);
+}
+// These three administrative operations must be called only after requireAdmin().
+export async function listDeletedReservations() {
+  const rows = await db.gameReservation.findMany({
+    where: { deletedAt: { not: null } },
+    select: {
+      id: true,
+      gameName: true,
+      hostName: true,
+      deletedAt: true,
+      _count: { select: { participants: true } },
+    },
+    orderBy: [{ deletedAt: "desc" }, { id: "asc" }],
+  });
+  return rows.map((r) => ({
+    id: r.id,
+    gameName: r.gameName,
+    hostName: r.hostName,
+    deletedAt: r.deletedAt!.toISOString(),
+    participantCount: r._count.participants,
+  }));
+}
+export async function restoreReservation(id: string) {
+  await mutate(
+    id,
+    async (tx, r) => {
+      if (!r.deletedAt)
+        throw new AppError("NOT_DELETED", "预约不在回收站中", 409);
+      await tx.gameReservation.update({
+        where: { id },
+        data: { deletedAt: null },
+      });
+    },
+    true,
+  );
+}
+export async function purgeReservation(id: string) {
+  await mutate(
+    id,
+    async (tx, r) => {
+      if (!r.deletedAt)
+        throw new AppError("NOT_DELETED", "请先将预约移入回收站", 409);
+      await tx.gameReservation.delete({ where: { id } });
+    },
+    true,
+  );
 }

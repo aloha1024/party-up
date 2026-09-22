@@ -63,6 +63,7 @@ export async function currentAdmin() {
   });
   if (
     !admin ||
+    !admin.isActive ||
     admin.mustChangePassword ||
     admin.sessionVersion !== session.sessionVersion
   )
@@ -83,7 +84,7 @@ export async function requireAdmin() {
 export async function requireAccountOwner() {
   const admin = await requireAdmin();
   if (!canCreateAdministrators(admin))
-    throw new AppError("FORBIDDEN", "只有主管理员可以创建管理员账号", 403);
+    throw new AppError("FORBIDDEN", "只有主管理员可以管理管理员账号", 403);
   return admin;
 }
 
@@ -98,7 +99,7 @@ export async function verifyAdminCredentials(
     password,
     admin?.passwordHash ?? owner.passwordHash,
   );
-  return { admin, valid: !!admin && passwordValid };
+  return { admin, valid: !!admin && admin.isActive && passwordValid };
 }
 
 const accountSchema = z
@@ -144,7 +145,7 @@ export async function replaceAdminPassword(
 ) {
   const passwordHash = await hashPassword(newPassword);
   const updated = await db.adminCredential.updateMany({
-    where: { id: adminId, passwordHash: currentHash },
+    where: { id: adminId, passwordHash: currentHash, isActive: true },
     data: {
       passwordHash,
       mustChangePassword: false,

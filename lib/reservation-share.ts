@@ -21,6 +21,9 @@ export function reservationShareText(
     "开玩时间：" + time + "（北京时间 UTC+8）",
     "已接龙人数：" + r.participants.length + " / " + r.maxPlayers + " 人",
     "当前状态：" + statusLabels[getStatus(r, r.participants.length, now)],
+    ...(r.status === "CANCELLED" && r.cancellationReason
+      ? ["取消原因：" + r.cancellationReason]
+      : []),
     "备注：" + (r.description.trim() || "无"),
     "",
     "接龙名单（昵称 / 游戏 ID）：",

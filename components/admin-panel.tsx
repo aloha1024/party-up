@@ -6,7 +6,12 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { formatTime } from "@/lib/utils";
-import type { Reservation } from "@/types/reservation";
+import {
+  ReservationFilters,
+  ReservationPagination,
+} from "@/components/reservation-filters";
+import { useReservationRefresh } from "@/components/use-reservation-refresh";
+import type { ReservationSummary, ReservationPage } from "@/types/reservation";
 
 async function request(url: string, method: string, body?: unknown) {
   const response = await fetch(url, {
@@ -22,18 +27,21 @@ async function request(url: string, method: string, body?: unknown) {
 export function AdminPanel({
   authenticated,
   reservations,
+  listing,
   view = "reservations",
   canCreateAdmins = false,
   children,
 }: {
   authenticated: boolean;
-  reservations: Reservation[];
-  view?: "reservations" | "password" | "accounts";
+  reservations: ReservationSummary[];
+  listing?: ReservationPage;
+  view?: "reservations" | "password" | "accounts" | "trash";
   canCreateAdmins?: boolean;
   children?: ReactNode;
 }) {
   const router = useRouter();
   const [pending, start] = useTransition();
+  useReservationRefresh(authenticated && view === "reservations", pending);
   const [error, setError] = useState("");
   const [firstLogin, setFirstLogin] = useState(false);
   const [username, setUsername] = useState("admin");
@@ -103,11 +111,13 @@ export function AdminPanel({
       </Link>
       <div className="my-8 flex items-center justify-between gap-4">
         <h1 className="text-3xl font-bold">
-          {view === "accounts"
-            ? "管理员账号"
-            : view === "password"
-              ? "修改管理员密码"
-              : "预约管理"}
+          {view === "trash"
+            ? "回收站"
+            : view === "accounts"
+              ? "管理员账号"
+              : view === "password"
+                ? "修改管理员密码"
+                : "预约管理"}
         </h1>
         {authenticated && (
           <Button
@@ -159,6 +169,14 @@ export function AdminPanel({
               </Link>
             </Button>
           )}
+          <Button asChild variant={view === "trash" ? "default" : "outline"}>
+            <Link
+              href="/admin/trash"
+              aria-current={view === "trash" ? "page" : undefined}
+            >
+              回收站
+            </Link>
+          </Button>
         </nav>
       )}
       {error && (
@@ -222,7 +240,7 @@ export function AdminPanel({
         </form>
       ) : (
         <div className="space-y-6">
-          {view === "accounts" ? (
+          {view === "accounts" || view === "trash" ? (
             children
           ) : view === "password" ? (
             <form className="panel space-y-5 p-6" onSubmit={changePassword}>
@@ -249,9 +267,12 @@ export function AdminPanel({
             </form>
           ) : (
             <>
+              {listing && (
+                <ReservationFilters listing={listing} path="/admin" />
+              )}
               <p className="text-sm text-zinc-400">
-                共 {reservations.length}{" "}
-                场预约。删除会同时移除接龙名单，且无法撤销。
+                共 {listing?.total ?? reservations.length}{" "}
+                场预约。移入回收站后不再公开展示，可在回收站恢复。
               </p>
               {reservations.map((r) => (
                 <div
@@ -267,7 +288,7 @@ export function AdminPanel({
                     </Link>
                     <p className="mt-2 text-sm text-zinc-400">
                       {formatTime(r.scheduledAt)} · {r.hostName} ·{" "}
-                      {r.participants.length}/{r.maxPlayers} 人
+                      {r.participantCount}/{r.maxPlayers} 人
                     </p>
                   </div>
                   <div className="flex gap-2">
@@ -283,7 +304,7 @@ export function AdminPanel({
                       onClick={() => {
                         if (
                           window.confirm(
-                            `确定永久删除「${r.gameName}」及其全部接龙名单？此操作无法撤销。`,
+                            `确定将「${r.gameName}」移入回收站？可在回收站恢复。`,
                           )
                         )
                           run(async () => {
@@ -291,16 +312,19 @@ export function AdminPanel({
                               `/api/admin/reservations/${r.id}`,
                               "DELETE",
                             );
-                            toast.success("预约已删除");
+                            toast.success("预约已移入回收站");
                             router.refresh();
                           });
                       }}
                     >
-                      删除预约
+                      移入回收站
                     </Button>
                   </div>
                 </div>
               ))}
+              {listing && (
+                <ReservationPagination listing={listing} path="/admin" />
+              )}
               {!reservations.length && (
                 <p className="panel p-8 text-center text-zinc-400">暂无预约</p>
               )}

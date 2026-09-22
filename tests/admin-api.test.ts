@@ -1,3 +1,4 @@
+import "./support/isolated";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { db } from "../server/db";
@@ -246,6 +247,116 @@ test(
       assert.equal(rootAfter.passwordHash, rootBefore.passwordHash);
       assert.equal(rootAfter.sessionVersion, rootBefore.sessionVersion);
 
+      const accountUrl = "/api/admin/accounts/" + account.id;
+      assert.equal(
+        (await send(accountUrl, "PATCH", { action: "disable" })).status,
+        401,
+      );
+      assert.equal(
+        (
+          await send(
+            accountUrl,
+            "PATCH",
+            { action: "disable" },
+            moderatorCurrentCookie,
+          )
+        ).status,
+        403,
+      );
+      assert.equal(
+        (
+          await send(
+            "/api/admin/accounts/1",
+            "PATCH",
+            { action: "disable" },
+            currentCookie,
+          )
+        ).status,
+        403,
+      );
+      assert.equal(
+        (
+          await send(
+            accountUrl,
+            "PATCH",
+            { action: "disable", isActive: true },
+            currentCookie,
+          )
+        ).status,
+        400,
+      );
+      assert.equal(
+        (await send(accountUrl, "PATCH", { action: "disable" }, currentCookie))
+          .status,
+        200,
+      );
+      assert.equal(
+        (await send(deleteUrl, "DELETE", undefined, moderatorCurrentCookie))
+          .status,
+        401,
+      );
+      assert.equal(
+        (
+          await send("/api/admin/session", "POST", {
+            username: accountInput.username,
+            password: "moderator-changed-456",
+          })
+        ).status,
+        401,
+      );
+      assert.equal(
+        (
+          await send(
+            accountUrl,
+            "PATCH",
+            { action: "resetPassword", password: "short" },
+            currentCookie,
+          )
+        ).status,
+        400,
+      );
+      assert.equal(
+        (
+          await send(
+            accountUrl,
+            "PATCH",
+            { action: "resetPassword", password: "reset-temporary-789" },
+            currentCookie,
+          )
+        ).status,
+        200,
+      );
+      const resetAccount = await db.adminCredential.findUniqueOrThrow({
+        where: { id: account.id },
+      });
+      assert.equal(resetAccount.isActive, false);
+      assert.equal(resetAccount.mustChangePassword, true);
+      assert.equal(
+        (await send(accountUrl, "PATCH", { action: "enable" }, currentCookie))
+          .status,
+        200,
+      );
+      assert.equal(
+        (await send(deleteUrl, "DELETE", undefined, moderatorCurrentCookie))
+          .status,
+        401,
+      );
+      const resetLogin = await send("/api/admin/session", "POST", {
+        username: accountInput.username,
+        password: "reset-temporary-789",
+      });
+      assert.equal(resetLogin.status, 200);
+      assert.equal((await resetLogin.json()).data.requiresPasswordChange, true);
+      assert.equal(resetLogin.headers.get("set-cookie"), null);
+      const resetComplete = await send("/api/admin/session", "POST", {
+        username: accountInput.username,
+        password: "reset-temporary-789",
+        newPassword: "reset-final-password-123",
+      });
+      assert.equal(resetComplete.status, 200);
+      const enabledCookie = resetComplete.headers
+        .get("set-cookie")!
+        .split(";")[0];
       const editUrl = `/api/reservations/${reservationId}`;
       const changes = {
         gameName: "Admin edited",
@@ -264,20 +375,68 @@ test(
         200,
       );
       assert.equal(
-        (await send(editUrl, "PATCH", changes, moderatorCurrentCookie)).status,
+        (await send(editUrl, "PATCH", changes, enabledCookie)).status,
         200,
       );
       assert.equal(
-        (await send(deleteUrl, "DELETE", undefined, moderatorCurrentCookie))
-          .status,
+        (await send(deleteUrl, "DELETE", undefined, enabledCookie)).status,
         200,
       );
-      assert.equal(await db.participant.count({ where: { reservationId } }), 0);
+      assert.equal(await db.participant.count({ where: { reservationId } }), 1);
       assert.equal(
         (await send(`/api/reservations/${reservationId}`, "GET")).status,
         404,
       );
 
+      const trashUrl = "/api/admin/trash/" + reservationId;
+      assert.equal((await send(trashUrl, "POST")).status, 401);
+      assert.equal((await send(trashUrl, "DELETE")).status, 401);
+      assert.equal(
+        (await send(trashUrl, "POST", undefined, enabledCookie)).status,
+        200,
+      );
+      assert.equal((await send(editUrl, "GET")).status, 200);
+      assert.equal(
+        (await send(trashUrl, "DELETE", undefined, enabledCookie)).status,
+        409,
+      );
+      assert.equal(
+        (
+          await send(
+            editUrl + "/cancel",
+            "POST",
+            { reason: "管理员取消" },
+            enabledCookie,
+          )
+        ).status,
+        200,
+      );
+      assert.equal(
+        (await send(deleteUrl, "DELETE", undefined, enabledCookie)).status,
+        200,
+      );
+      assert.equal(
+        (await send(trashUrl, "POST", undefined, enabledCookie)).status,
+        200,
+      );
+      assert.equal(
+        (await (await send(editUrl, "GET")).json()).data.status,
+        "CANCELLED",
+      );
+      assert.equal(
+        (await send(deleteUrl, "DELETE", undefined, enabledCookie)).status,
+        200,
+      );
+      assert.equal(
+        (await send(trashUrl, "DELETE", undefined, enabledCookie)).status,
+        200,
+      );
+      assert.equal(await db.participant.count({ where: { reservationId } }), 0);
+      const rootFinal = await db.adminCredential.findUniqueOrThrow({
+        where: { id: 1 },
+      });
+      assert.equal(rootFinal.passwordHash, rootBefore.passwordHash);
+      assert.equal(rootFinal.sessionVersion, rootBefore.sessionVersion);
       const logout = await send(
         "/api/admin/session",
         "DELETE",

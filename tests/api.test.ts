@@ -1,3 +1,4 @@
+import "./support/isolated";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { db } from "../server/db";
@@ -65,6 +66,36 @@ test(
       assert.equal(
         (await send("/api/reservations/missing", "GET")).status,
         404,
+      );
+      assert.equal(
+        (await send(url + "/cancel", "POST", { reason: "outsider" })).status,
+        403,
+      );
+      assert.equal(
+        (
+          await send(
+            url + "/cancel",
+            "POST",
+            { reason: " " },
+            cookie.split(";")[0],
+          )
+        ).status,
+        400,
+      );
+      const cancelled = await send(
+        url + "/cancel",
+        "POST",
+        { reason: "临时有事" },
+        cookie.split(";")[0],
+      );
+      assert.equal(cancelled.status, 200);
+      assert.equal(
+        (await cancelled.json()).data.cancellationReason,
+        "临时有事",
+      );
+      assert.equal(
+        (await send(url + "/participants", "POST", { name: "Late" })).status,
+        409,
       );
       const bad = await fetch(`${base}/api/reservations`, {
         method: "POST",
