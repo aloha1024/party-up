@@ -17,3 +17,10 @@ server.env
 
 playwright-report/
 test-results/
+
+build-info.json
+
+# Downloaded CI image artifacts
+tested-container/
+candidate-image.tar
+candidate-image-id.txt

@@ -11,6 +11,7 @@ export class ClientRequestError extends Error {
     public readonly code: "HTTP" | "NETWORK" | "TIMEOUT" | "INVALID_RESPONSE",
     public readonly status?: number,
     public readonly serverCode?: string,
+    public readonly requestId?: string,
   ) {
     super(message);
     this.name = "ClientRequestError";
@@ -92,11 +93,17 @@ export async function request<T = unknown>(
         typeof envelope?.error === "string" && envelope.error.trim()
           ? envelope.error
           : fallback;
+      const headerId = response.headers?.get("x-request-id");
+      const requestId =
+        headerId && /^[a-f0-9-]{36}$/.test(headerId) ? headerId : undefined;
       throw new ClientRequestError(
-        message + (response.status >= 500 ? uncertain : ""),
+        message +
+          (response.status >= 500 ? uncertain : "") +
+          (requestId ? `（错误编号：${requestId}）` : ""),
         "HTTP",
         response.status,
         typeof envelope?.code === "string" ? envelope.code : undefined,
+        requestId,
       );
     }
     if (!envelope || !Object.hasOwn(envelope, "data"))

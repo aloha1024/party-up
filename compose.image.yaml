@@ -1,13 +1,15 @@
+# Use from the same directory and with the same -p project as compose.yaml
+# to preserve the existing reservation-data volume. This file is standalone.
 services:
   web:
-    build:
-      context: .
+    image: ${PARTY_IMAGE:?Set PARTY_IMAGE to a tested commit tag or digest}
     ports:
       - "${APP_PORT:-3001}:3000"
     environment:
       DATABASE_URL: file:/app/data/reservations.db
       NODE_ENV: production
       NEXT_TELEMETRY_DISABLED: "1"
+      APP_IMAGE: ${PARTY_IMAGE:?Set PARTY_IMAGE to a tested commit tag or digest}
       TRUST_PROXY: ${TRUST_PROXY:-0}
       ADMIN_USERNAME: ${ADMIN_USERNAME:-}
       ADMIN_PASSWORD_HASH: ${ADMIN_PASSWORD_HASH:-}
@@ -15,13 +17,13 @@ services:
     volumes:
       - reservation-data:/app/data
     restart: unless-stopped
+    init: true
+    stop_grace_period: 30s
     logging:
       driver: local
       options:
         max-size: "10m"
         max-file: "3"
-    init: true
-    stop_grace_period: 30s
 
 volumes:
   reservation-data:

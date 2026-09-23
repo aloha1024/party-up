@@ -6,31 +6,42 @@ RUN apt-get update \
 WORKDIR /app
 ENV NEXT_TELEMETRY_DISABLED=1
 
+# Maintenance tools are installed from a separate lockfile. They must work
+# without network access when migrating, initializing admins, or restoring data.
+FROM base AS maintenance
+COPY docker/maintenance/package.json docker/maintenance/package-lock.json ./
+COPY prisma ./prisma
+RUN npm ci --omit=dev && node node_modules/prisma/build/index.js generate
+
 FROM base AS build
 COPY package.json package-lock.json ./
 COPY prisma ./prisma
 RUN npm ci
 COPY . .
-# No application database is copied into the image or needed for compilation.
+ARG APP_VERSION=development
+ARG APP_BUILD_DATE
 ENV DATABASE_URL=file:/app/data/reservations.db
-# Next lists Playwright as an optional peer, so npm retains its devOptional
-# packages even with --omit=dev/peer. Remove only browser test tools; keep
-# optional runtime dependencies such as SWC and sharp.
 RUN npm run build && mkdir -p public \
-    && npm prune --omit=dev \
-    && rm -rf .next/cache node_modules/@playwright/test \
-        node_modules/playwright node_modules/playwright-core \
-        node_modules/.bin/playwright node_modules/.bin/playwright-core
+    && APP_VERSION="$APP_VERSION" APP_BUILD_DATE="$APP_BUILD_DATE" node scripts/build-info.mjs --write
 
 FROM base AS runtime
-ENV NODE_ENV=production \
+ARG APP_VERSION=development
+ARG APP_BUILD_DATE
+LABEL org.opencontainers.image.source="https://github.com/aloha1024/party-up" \
+      org.opencontainers.image.revision="$APP_VERSION" \
+      org.opencontainers.image.created="$APP_BUILD_DATE"
+ENV APP_VERSION=$APP_VERSION \
+    NODE_ENV=production \
     DATABASE_URL=file:/app/data/reservations.db \
+    HOSTNAME=0.0.0.0 \
     PORT=3000
-# Keep production dependencies and Prisma CLI for offline startup migrations.
-COPY --from=build --chown=node:node /app/node_modules ./node_modules
-COPY --from=build --chown=node:node /app/.next ./.next
+COPY --from=build --chown=node:node /app/.next/standalone ./
+COPY --from=build --chown=node:node /app/.next/static ./.next/static
 COPY --from=build --chown=node:node /app/public ./public
-COPY --from=build --chown=node:node /app/package.json /app/package-lock.json ./
+# Overlay the complete maintenance dependency tree, including the generated
+# Linux Prisma client, onto Next's traced server dependencies.
+COPY --from=maintenance --chown=node:node /app/node_modules ./node_modules
+COPY --from=build --chown=node:node /app/package.json /app/package-lock.json /app/build-info.json ./
 COPY --from=build --chown=node:node /app/prisma ./prisma
 COPY --from=build --chown=node:node /app/scripts ./scripts
 RUN mkdir -p /app/data && chown node:node /app/data \

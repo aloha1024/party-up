@@ -1,12 +1,21 @@
 #!/usr/bin/env bash
 # Dedicated CI project and anonymous test port. Never reuses the deployment project.
 set -Eeuo pipefail
+umask 077
 cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.."
 scratch="$(mktemp -d)"
 project="party-ci-$(date +%s)-$$"
-compose=(docker compose --env-file "$scratch/env" -p "$project" -f compose.yaml)
+compose_file=compose.yaml
+startup_flags=(--build)
+if [[ -n "${PARTY_IMAGE:-}" ]]; then
+  compose_file=compose.image.yaml
+  startup_flags=(--no-build)
+fi
+compose=(docker compose --env-file "$scratch/env" -p "$project" -f "$compose_file")
+printf '%s\n' "$project" > "$scratch/docker-ci-project"
 printf 'APP_PORT=0\nADMIN_USERNAME=\nADMIN_PASSWORD_HASH=\nADMIN_SESSION_SECRET=\nTRUST_PROXY=0\n' > "$scratch/env"
 unset APP_PORT ADMIN_USERNAME ADMIN_PASSWORD_HASH ADMIN_SESSION_SECRET TRUST_PROXY
+unset COMPOSE_FILE COMPOSE_PROJECT_NAME COMPOSE_ENV_FILES COMPOSE_PROFILES
 cleanup() { "${compose[@]}" down -v --remove-orphans >/dev/null 2>&1 || true; rm -rf -- "$scratch"; }
 trap cleanup EXIT
 # Docker may allocate a different anonymous host port when the container restarts.
@@ -41,7 +50,7 @@ wait_for_health() {
   diagnose
   return 1
 }
-if ! "${compose[@]}" up -d --build --wait --wait-timeout 120; then
+if ! "${compose[@]}" up -d "${startup_flags[@]}" --wait --wait-timeout 120; then
   diagnose
   exit 1
 fi
@@ -64,4 +73,5 @@ PY
 "${compose[@]}" exec -T web node -e "require('@prisma/client'); for (const name of ['@playwright/test', 'playwright', 'playwright-core']) { try { require.resolve(name); } catch (e) { if(e.code==='MODULE_NOT_FOUND') continue; throw e; } console.error('Unexpected test dependency in production image: ' + name); process.exit(1); } console.log('Production runtime dependencies verified');"
 # Prisma is a CLI package; its root export is not the executable entry point.
 "${compose[@]}" exec -T web node node_modules/prisma/build/index.js --version
+bash scripts/docker-backup-smoke.sh "$project" "$scratch" "$compose_file"
 docker image inspect "$("${compose[@]}" images -q web)" --format 'Image bytes: {{.Size}}'

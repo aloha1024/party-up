@@ -104,9 +104,9 @@ docker compose --env-file .env up -d --force-recreate web
 
 ```bash
 git pull origin main
-docker compose build web
+docker compose build --build-arg APP_VERSION="$(git rev-parse HEAD)" web
 bash scripts/backup.sh backup
-docker compose up -d web
+docker compose up -d --wait web
 docker compose ps
 docker compose logs --tail=100 web
 ```
@@ -117,6 +117,40 @@ docker compose logs --tail=100 web
 
 - `reservations.db`：预约、报名和管理员密码哈希。
 - `admin-bootstrap.json`：管理员初始化配置与会话密钥，不含明文密码。
+
+### 使用 GHCR 中已验证的镜像
+
+`main` 每次推送通过全部检查后，CI 会将**同一个已测试镜像**发布到 `ghcr.io/aloha1024/party-up`。发布任务不重新构建，先核对镜像 ID、提交版本及运行版本，推送后再按摘要拉取核对。Pull Request 和手动检查不会发布。
+
+- 提交标签：`ghcr.io/aloha1024/party-up:sha-完整40位提交号`。
+- 推荐部署：使用该次 Actions 的 **publish → Summary** 输出的 `ghcr.io/aloha1024/party-up@sha256:完整摘要`。提交标签可被重推，摘要固定镜像内容。
+- 自动发布使用 GitHub 提供的 `GITHUB_TOKEN`，只有 publish 任务拥有 `packages: write`，无需配置额外发布密码。
+- 首次 GHCR 包默认私有。服务器拉取私有镜像时先执行 `docker login ghcr.io -u aloha1024`，在密码提示中输入具有 `read:packages` 权限的 classic PAT。包设为 public 后才支持匿名拉取，发布流程不修改包可见性。参考 [GitHub 包权限说明](https://docs.github.com/en/packages/learn-github-packages/configuring-a-packages-access-control-and-visibility)。
+
+首次从源码部署切换时，先在原项目目录按原配置运行 `bash scripts/backup.sh backup`，再在原 `.env` 中设置（将摘要替换为该次发布的实际值）：
+
+```dotenv
+COMPOSE_FILE=compose.image.yaml
+PARTY_IMAGE=ghcr.io/aloha1024/party-up@sha256:完整摘要
+```
+
+`compose.image.yaml` 是独立配置，不与 `compose.yaml` 叠加。它沿用同一项目的 `reservation-data` 卷；必须保持原目录或原来的 `-p` 项目名。设置后执行：
+
+```bash
+docker compose pull web
+docker compose up -d --no-build --wait web
+```
+
+后续更新先确认目标发布已成功，**保留旧镜像和旧的 `PARTY_IMAGE`，在修改 `.env` 前备份**，然后替换为新摘要，拉取并启动。当前 CI 只构建 Linux amd64 镜像。
+
+候选镜像仍以 `tested-container` 构建产物保留 1 天，包含 `candidate-image.tar` 和 `candidate-image-id.txt`，可用于排查发布问题。超过保留期后，应重新运行完整检查流程；仅重跑 publish 无法取得已过期产物。
+
+回退分两种情况：
+
+- **没有不兼容的数据库迁移**：将 `PARTY_IMAGE` 改回保留的旧版本，再启动并等待健康检查。
+- **数据库也需要回退**：停止更新操作，按下面的恢复流程使用升级前快照；快照会同时恢复当时 `.env`，因此要保留对应旧镜像和兼容的 Compose 配置。恢复会丢弃快照之后的数据，脚本会先保存恢复前快照。
+
+不要直接让旧代码运行在不兼容的新数据库上。备份中的版本和迁移清单用于核对，不能自动证明任意两个版本兼容。
 
 ### 备份与恢复
 
@@ -133,9 +167,9 @@ bash scripts/backup.sh verify backups/backup-实际目录名
 bash scripts/backup.sh restore backups/backup-实际目录名 --confirm
 ```
 
-备份包含预约、报名、管理员密码哈希、会话密钥及服务器 `.env`；使用文件校验值、SQLite 完整性和外键检查验证。默认放在 `backups/`，仅保留最近 7 份常规备份；恢复前快照不会自动清理。可通过 `BACKUP_DIR=/安全路径 KEEP_BACKUPS=14 bash scripts/backup.sh backup` 调整目录与数量。
+备份包含预约、报名、管理员密码哈希、会话密钥及服务器 `.env`；使用文件校验值、SQLite 完整性和外键检查验证。新备份的 manifest v2 记录执行备份工具的应用／镜像版本，以及数据库实际已应用的迁移和校验值；旧版 v1 备份仍可恢复。默认放在 `backups/`，仅保留最近 7 份常规备份；恢复前快照不会自动清理。可通过 `BACKUP_DIR=/安全路径 KEEP_BACKUPS=14 bash scripts/backup.sh backup` 调整目录与数量。
 
-恢复会同时恢复 `.env`，因此端口和管理员配置也会回到备份时的值。使用生成备份时的代码版本，或已确认兼容的新版本恢复；在原 Compose 项目名和数据卷下执行。备份和恢复期间网站会短暂停止，原本已停止的网站不会自动启动。恢复中途失败时网站保持停止，请根据提示使用恢复前快照处理后再启动。
+恢复会同时恢复 `.env`，因此端口和管理员配置也会回到备份时的值。使用生成备份时的代码版本，或已确认兼容的新版本恢复；在原 Compose 项目名和数据卷下执行。备份和恢复期间网站会短暂停止，原本已停止的网站不会自动启动。恢复中途失败时网站保持停止，请根据提示使用恢复前快照处理后再启动。原本运行的网站在备份后重启、恢复后启动时，脚本会等待 Docker 健康检查通过；启动失败返回非零并尝试停止网站，明确区分“数据已恢复”和“网站可用”。默认等待 120 秒，可设置 `WEB_HEALTH_TIMEOUT=180`（1–600 秒）。
 
 备份目录仅限当前系统用户访问。请另外保存一份到其他磁盘或服务器；不要将配置、数据库或备份提交到 GitHub。
 
@@ -160,8 +194,8 @@ npm run dev
 npm run typecheck   # 类型检查
 npm test           # 自动创建测试数据库、生产构建、启动独立服务并执行全部测试
 npm run test:unit  # 业务与脚本测试，跳过构建及 HTTP 接口测试
-npx playwright install chromium  # 首次安装浏览器
-npm run test:e2e   # 临时数据库上的桌面／手机浏览器测试
+npx playwright install --with-deps chromium webkit  # 首次安装浏览器及 Linux 依赖
+npm run test:e2e   # 临时库上的 Chromium、WebKit/iPhone 与普通 HTTP 测试
 npm run benchmark:queries  # 5 万条模拟数据的查询对比，不读取现有数据库
 npm run build      # 生产构建
 npm start          # 运行生产构建
@@ -188,15 +222,23 @@ types/        共享类型
 
 回收站默认每页 12 场，按移入时间倒序排列；支持搜索游戏名称、发起人或预约 ID，并按移入日期（北京时间）筛选。筛选和页码保存在链接中，恢复或删除后自动更新人数和总数，末页清空后展示最近的有效页。列表只读取摘要及报名人数。
 
-后续可扩展事件推送、日志归档和账号系统。迁移 PostgreSQL 时需调整 Prisma provider、重新生成适配的迁移并迁移数据，不能直接复用 SQLite 迁移文件。
+后续可扩展事件推送、集中日志检索和账号系统。迁移 PostgreSQL 时需调整 Prisma provider、重新生成适配的迁移并迁移数据，不能直接复用 SQLite 迁移文件。
 
 ## 创建防重复与报名身份
 
-浏览器在创建、报名前先确认身份 Cookie 已保存，再提交业务请求。相同浏览器、相同提交编号的创建请求只生成一场预约；网络响应丢失后，在同一标签页用相同内容重试会返回原预约。成功后会清除编号，再次主动创建会生成新预约。标签页暂存本次创建内容与编号，成功或关闭标签页后清理；禁用标签页存储时只支持本页内重试。HTTPS 浏览器使用跨标签页锁协调首次身份初始化。
+浏览器在创建、报名前先确认身份 Cookie 已保存，再提交业务请求。相同浏览器、相同提交编号的创建请求只生成一场预约；网络响应丢失后，在同一标签页用相同内容重试会返回原预约。成功后会清除编号，再次主动创建会生成新预约。标签页暂存本次创建内容与编号，成功或关闭标签页后清理；禁用标签页存储时只支持本页内重试。结果尚未确认时，修改表单内容不会替换原提交编号；可先查看结果或明确放弃记录。支持 Web Locks 的浏览器使用跨标签页锁协调首次初始化；普通 HTTP 等不支持该能力的环境使用 IndexedDB 事务协调，不在 IndexedDB 保存身份凭据。首次初始化时若两种协调方式均不可用，会明确提示允许存储或改用 HTTPS；已有身份仍可使用。
 
 清除 Cookie 或换浏览器仍会失去原报名身份。已经删除的预约不会因重试而重新出现；数据库保留创建请求摘要用于识别旧请求，不自动清理。
 
 外部 API 调用需先 `POST /api/identity` 保存 Cookie，再通过 `GET /api/identity` 确认 `data.ready`。公开预约写入缺少身份返回 428。创建时还必须提供 `Idempotency-Key` 请求头（16–100 位字母、数字、下划线或连字符），同编号内容不一致返回 409。重放返回当前预约信息，不重新报名。
+
+## 草稿与创建结果恢复
+
+创建和编辑表单在输入时保存当前标签页的草稿，刷新后可选择恢复或丢弃。草稿不会上传服务器，关闭标签页后结束保存；禁止标签页存储时会显示提示。编辑草稿保留原信息版本，预约已被其他人修改时只能查看旧草稿并手动选择需要的内容，不能直接覆盖最新版本。
+
+创建超时或响应丢失后，点击“查看上次创建结果”即可找回原预约，即使开玩时间已经过去也可查询。查询使用原浏览器身份和提交编号；清除 Cookie 后不能据此恢复身份。确认找到结果或创建成功后清理草稿与提交编号。放弃未确认记录后再次创建可能生成另一场预约，界面会先提醒。
+
+接口：`GET /api/reservations/submission` 携带原 Cookie 和 `Idempotency-Key`，返回 `data.state`：`found`（包含预约 ID、游戏名、时间）、`missing` 或 `removed`；不会返回其他浏览器的创建结果。
 
 ## 访问保护与超时
 
@@ -208,19 +250,26 @@ types/        共享类型
 
 默认 `TRUST_PROXY=0`，忽略客户端发送的来源地址头。只有在反向代理覆盖 `X-Real-IP`、正确传递 Host／协议，并阻止客户端直接访问容器端口时，才设置 `TRUST_PROXY=1`。直接通过 IP 访问无需开启。上线仍建议使用 HTTPS。
 
+## 运行诊断与管理员会话
+
+- 业务 API 返回 `X-Request-ID`；错误响应同时含 `requestId`，界面显示错误编号。服务器 JSON 日志记录编号、接口模板、状态、错误代码和耗时，不记录 Cookie、密码、请求正文或异常原文。
+- Compose 使用 `local` 日志驱动，每个容器最多保留 3 个 10 MB 文件。查看最近日志：`docker compose logs --tail=100 web`。
+- 管理员页面底部显示运行提交；源码构建时传 `--build-arg APP_VERSION="$(git rev-parse HEAD)"`。容器中运行 `node scripts/build-info.mjs --json` 可查看构建和维护工具版本。
+- “修改密码”页面新增“退出所有设备”，撤销当前账号的全部已有会话，包括本设备；其他管理员不受影响，并写入操作记录。普通“退出登录”仍只清除本浏览器登录。
+
 ## 自动检查与容器运行
 
-`.github/workflows/ci.yml` 在推送 main、Pull Request 和手动运行时使用 Linux 执行类型检查、业务／接口测试、Chromium 桌面和手机视口测试。独立 Docker 任务验证镜像构建、迁移、健康检查、重启后的身份和提交去重；失败时保留浏览器报告 7 天。测试凭据临时生成，报告不应包含实际用户数据。
+`.github/workflows/ci.yml` 在推送 main、Pull Request 和手动运行时使用 Linux 执行类型检查、业务／接口测试、Chromium 桌面和手机视口、WebKit/iPhone，以及普通 HTTP 下的首次多标签页身份测试。Docker 任务在上述检查成功后构建一次候选镜像，并验证该镜像的迁移、健康检查、重启后的身份和提交去重，以及真实备份→修改→恢复演练；失败时保留浏览器报告 7 天。测试凭据临时生成，报告不应包含实际用户数据。
 
 本地有 Docker 时可执行 `bash scripts/docker-smoke.sh`，它创建独立的随机 Compose 项目、临时端口与数据卷，并在退出时删除自己的测试资源。不要把测试脚本用作部署命令。浏览器测试遵循 [Playwright 的 CI 安装流程](https://playwright.dev/docs/ci-intro)。
 
-容器健康检查改用 `/api/health`：只做轻量数据库探测，正常返回 200，异常或探测超时返回 503，不返回数据库细节。运行镜像删除开发依赖和 Next 构建缓存，保留 Prisma CLI 以便离线执行启动迁移。
+容器健康检查改用 `/api/health`：只做轻量数据库探测，正常返回 200，异常或探测超时返回 503，不返回数据库细节。运行镜像使用 Next.js standalone 输出，并通过 `docker/maintenance` 的独立锁文件保留 Prisma CLI 和 Client，以便离线迁移、初始化管理员和备份恢复。升级 Prisma 时同时更新主项目和维护目录的 package／lock 文件。镜像大小以实际 Docker 构建输出为准。
 
 新增索引匹配预约列表、回收站和操作记录的稳定排序。内存 SQLite 中各 5 万条模拟预约／记录、每条查询重复 100 次的单次测量：列表 0.375→0.024 ms，回收站 0.642→0.020 ms，操作类型筛选 0.402→0.038 ms；三者额外排序步骤消除，结果完全一致。这不是生产压测，实际收益取决于数据分布、磁盘和并发；镜像大小须以 Docker 实际构建结果为准。
 
 ## 多人编辑保护
 
-发起人与管理员编辑预约时，会携带打开表单时的信息版本。若其他人已保存修改，旧表单会收到冲突提示，不能覆盖新内容；当前输入会保留，可先在新窗口查看最新预约。重新加载编辑表单前会确认，并提醒复制需要保留的内容。
+发起人与管理员编辑预约时，会携带打开表单时的信息版本。若其他人已保存修改，旧表单会收到冲突提示，不能覆盖新内容；当前输入会保留，可先在新窗口查看最新预约。重新加载后可查看原版本草稿，复制需要保留的内容，再基于最新信息修改。
 
 报名和退出不会改变信息版本；保存时仍按最新名单校验人数上限和昵称。此更新新增数据库迁移，旧预约版本自动初始化为 0，原链接、报名和管理员数据保留。Docker 启动会自动迁移，本地开发运行 `npm run db:migrate`。
 
@@ -232,9 +281,25 @@ types/        共享类型
 
 页面加载失败可点击“重新加载”重新获取服务端数据。管理员页面有独立的加载和错误提示。
 
+## 本轮验证
+
+2026-09-23：生产构建、类型检查和 71 项业务／HTTP 测试通过；浏览器 29 项通过，8 项按平台跳过（首次主管理员初始化只执行一次，普通 HTTP 专用场景仅在对应项目执行）。包含 Chromium 桌面／手机、WebKit/iPhone 和真实非安全 HTTP 域名。
+
+Linux 下按最终镜像组成搭建的独立运行目录，已验证启动、迁移、创建报名、管理员改密与备份恢复。完整 Docker 镜像构建及容器级演练已在 [GitHub Actions](https://github.com/aloha1024/party-up/actions/runs/35826736177) 通过，包括恢复前后预约、参与者、管理员凭据、配置和原运行状态；镜像为 605,831,953 字节，约 578 MiB。
+
 ## 更新记录
 
 按更新日期倒序整理，日期使用北京时间（UTC+8）。第三至第五轮优化于 2026-09-22 一并发布；后续未发布内容会单独标注。
+
+### 2026-09-23 · 恢复、诊断与容器维护
+
+- 备份／恢复后等待网站健康，失败明确返回非零；新增真实 Docker 数据恢复演练。
+- 创建／编辑草稿可恢复，未确认创建可独立查询结果；旧版本草稿保留且不覆盖新信息。
+- API 错误编号、结构化日志、日志轮转和后台运行版本，方便服务器排错。
+- Next standalone 镜像与独立维护依赖，真实 CI 镜像约 578 MiB，比上一轮减少约 31%；备份记录应用版本和数据库迁移，兼容旧备份。
+- main 全部检查通过后，将同一个候选镜像发布到 GHCR，校验镜像 ID、提交版本与摘要拉取结果；提供固定摘要部署及回退说明。
+- 普通 HTTP 首次身份初始化增加跨标签页协调，覆盖 Cookie／存储被阻止；浏览器测试新增 WebKit/iPhone。
+- 管理员可主动退出所有设备，旧会话立即失效，并记录操作；无新增数据库迁移。
 
 ### 2026-09-22 · 修复 Linux 自动检查
 

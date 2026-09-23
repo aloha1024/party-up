@@ -270,6 +270,32 @@ export function AdminPanel({
               <Button disabled={pending}>
                 {pending ? "正在保存…" : "修改密码"}
               </Button>
+              <div className="border-t border-white/10 pt-5">
+                <p className="mb-3 text-sm text-zinc-400">
+                  在公用设备登录过？可以使当前账号在所有设备上的登录立即失效，包括本设备。
+                </p>
+                <Button
+                  type="button"
+                  variant="outline"
+                  disabled={pending}
+                  onClick={() => {
+                    if (
+                      !window.confirm(
+                        "确定退出所有设备？本设备也需要重新登录。",
+                      )
+                    )
+                      return;
+                    run(async () => {
+                      await request("/api/admin/session/all", "DELETE");
+                      toast.success("所有设备的登录已失效");
+                      router.replace("/admin");
+                      router.refresh();
+                    });
+                  }}
+                >
+                  退出所有设备
+                </Button>
+              </div>
             </form>
           ) : (
             <>

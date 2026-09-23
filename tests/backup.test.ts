@@ -36,10 +36,54 @@ test("backup round trip preserves data and config; checksum failures never overw
   try {
     const db = open();
     db.exec(
-      "CREATE TABLE GameReservation (id TEXT PRIMARY KEY, name TEXT); CREATE TABLE Participant (id TEXT); CREATE TABLE AdminCredential (id INTEGER); CREATE TABLE _prisma_migrations (id TEXT); INSERT INTO GameReservation VALUES ('one', '原始预约');",
+      "CREATE TABLE GameReservation (id TEXT PRIMARY KEY, name TEXT); CREATE TABLE Participant (id TEXT); CREATE TABLE AdminCredential (id INTEGER); CREATE TABLE _prisma_migrations (id TEXT, migration_name TEXT, checksum TEXT, finished_at TEXT, rolled_back_at TEXT); INSERT INTO GameReservation VALUES ('one', '原始预约');",
+    );
+    db.prepare("INSERT INTO _prisma_migrations VALUES (?, ?, ?, ?, ?)").run(
+      "applied",
+      "20260923000100_example",
+      "c".repeat(64),
+      "2026-09-23T00:00:00Z",
+      null,
+    );
+    db.prepare("INSERT INTO _prisma_migrations VALUES (?, ?, ?, ?, ?)").run(
+      "failed",
+      "20260923000200_failed",
+      "d".repeat(64),
+      null,
+      null,
+    );
+    db.prepare("INSERT INTO _prisma_migrations VALUES (?, ?, ?, ?, ?)").run(
+      "rolled-back",
+      "20260923000300_rolled_back",
+      "e".repeat(64),
+      "2026-09-23T01:00:00Z",
+      "2026-09-23T02:00:00Z",
     );
     db.close();
     const snapshot = createSnapshot(data, backups, env);
+    const originalManifest = verifySnapshot(snapshot);
+    assert.equal(originalManifest.version, 2);
+    assert.equal(originalManifest.application.version, "1.0.0");
+    assert.ok(originalManifest.application.node.startsWith("v"));
+    assert.equal(originalManifest.application.prisma, "6.19.0");
+    assert.deepEqual(originalManifest.migrations, [
+      {
+        name: "20260923000100_example",
+        checksum: "c".repeat(64),
+        finishedAt: "2026-09-23T00:00:00Z",
+      },
+    ]);
+    const manifestPath = join(snapshot, "manifest.json");
+    writeFileSync(
+      manifestPath,
+      JSON.stringify({ ...originalManifest, migrations: [] }),
+    );
+    assert.throws(() => verifySnapshot(snapshot), /迁移信息无效/);
+    // Existing version-one snapshots remain restorable.
+    const legacyManifest = { ...originalManifest, version: 1 };
+    delete legacyManifest.application;
+    delete legacyManifest.migrations;
+    writeFileSync(manifestPath, JSON.stringify(legacyManifest));
     assert.equal(verifySnapshot(snapshot).version, 1);
     assert.equal(
       readFileSync(join(snapshot, "server.env"), "utf8"),

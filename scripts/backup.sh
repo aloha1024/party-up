@@ -39,7 +39,13 @@ cleanup() {
   fi
   if [ -n "$env_tmp" ] && [ -f "$env_tmp" ]; then rm -f -- "$env_tmp"; fi
   if [ "$resume" = 1 ]; then
-    docker compose start web || { echo "服务重启失败，请检查 docker compose logs web" >&2; status=1; }
+    if docker compose start web && bash scripts/wait-for-web.sh; then
+      echo "网站已恢复运行并通过健康检查"
+    else
+      docker compose stop web >/dev/null 2>&1 || true
+      echo "维护操作已结束，但网站重启或健康检查失败，已尝试停止网站。请检查服务器后再启动；备份文件保留。" >&2
+      status=1
+    fi
   fi
   exit "$status"
 }
@@ -67,7 +73,11 @@ if [ "$action" = restore ]; then
   env_tmp=""
   restore_started=0
   if [ "$was_running" = 1 ]; then
-    docker compose up -d --force-recreate web
+    if ! docker compose up -d --force-recreate web || ! bash scripts/wait-for-web.sh; then
+      docker compose stop web >/dev/null 2>&1 || true
+      echo "数据和 .env 已恢复，但网站启动或健康检查失败，已尝试停止网站。恢复前快照保存在 $root/pre-restore-*，请检查后再启动。" >&2
+      exit 1
+    fi
     resume=0
   fi
   echo "已恢复预约、报名、管理员和 .env；恢复前快照保存在 $root/pre-restore-*"

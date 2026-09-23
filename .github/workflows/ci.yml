@@ -25,7 +25,7 @@ jobs:
           test_cpus="$(python3 -c 'import os; print(",".join(map(str, sorted(os.sched_getaffinity(0))[:2])))')"
           taskset -c "$test_cpus" npm test
       - run: npm run typecheck
-      - run: npx playwright install --with-deps chromium
+      - run: npx playwright install --with-deps chromium webkit
       - run: npm run test:e2e
       - uses: actions/upload-artifact@v4
         if: failure()
@@ -36,8 +36,59 @@ jobs:
             test-results/
           retention-days: 7
   docker:
+    needs: test
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 35
     steps:
       - uses: actions/checkout@v6
-      - run: bash scripts/docker-smoke.sh
+      - name: Build candidate once
+        run: |
+          echo "PARTY_IMAGE=party-up-ci:${GITHUB_SHA}" >> "$GITHUB_ENV"
+          docker build --tag "party-up-ci:${GITHUB_SHA}" \
+            --build-arg "APP_VERSION=${GITHUB_SHA}" \
+            --build-arg "APP_BUILD_DATE=$(date -u +%Y-%m-%dT%H:%M:%SZ)" .
+      - name: Verify candidate and backup restore
+        run: bash scripts/docker-smoke.sh
+      - name: Preserve the tested image
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: |
+          docker image inspect --format '{{.Id}}' "$PARTY_IMAGE" > candidate-image-id.txt
+          docker save "$PARTY_IMAGE" --output candidate-image.tar
+      - uses: actions/upload-artifact@v4
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        with:
+          name: tested-container
+          path: |
+            candidate-image.tar
+            candidate-image-id.txt
+          compression-level: 0
+          retention-days: 1
+          if-no-files-found: error
+  publish:
+    needs: [test, docker]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && github.repository == 'aloha1024/party-up'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - name: Download this run's tested image
+        uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5
+        with:
+          name: tested-container
+          path: tested-container
+      - name: Load the tested image
+        run: docker load --input tested-container/candidate-image.tar
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Publish and verify the tested image
+        id: image
+        run: bash scripts/publish-image.sh tested-container

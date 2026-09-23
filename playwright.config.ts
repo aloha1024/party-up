@@ -19,5 +19,23 @@ export default defineConfig({
   projects: [
     { name: "desktop", use: { ...devices["Desktop Chrome"] } },
     { name: "mobile", use: { ...devices["Pixel 7"] } },
+    { name: "webkit", use: { ...devices["iPhone 13"] } },
+    {
+      name: "http-fallback",
+      testMatch: /identity\.spec\.ts/,
+      use: {
+        ...devices["Desktop Chrome"],
+        baseURL: process.env.TEST_BASE_URL.replace(
+          "127.0.0.1",
+          "party-http.test",
+        ),
+        launchOptions: {
+          args: [
+            "--host-resolver-rules=MAP party-http.test 127.0.0.1",
+            "--no-proxy-server",
+          ],
+        },
+      },
+    },
   ],
 });

@@ -1,0 +1,13 @@
+{
+  "name": "party-up-maintenance",
+  "version": "1.0.0",
+  "private": true,
+  "dependencies": {
+    "@prisma/client": "6.19.0",
+    "prisma": "6.19.0"
+  },
+  "overrides": {
+    "effect": "^3.20.0",
+    "deepmerge-ts": "^8.0.0"
+  }
+}
