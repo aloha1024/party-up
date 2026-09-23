@@ -17,6 +17,7 @@ test("create, copy share text, guest joins, capacity closes registration, and st
   page,
   browser,
   context,
+  browserName,
 }) => {
   const game = "Browser-" + randomUUID();
   await page.goto("/reservation/new");
@@ -25,14 +26,36 @@ test("create, copy share text, guest joins, capacity closes registration, and st
   await expect(page).toHaveURL(/\/reservation\/(?!new$)[a-z0-9-]+$/);
   const url = page.url();
   await expect(page.getByText("你已在接龙名单中")).toBeVisible();
-  await context.grantPermissions(["clipboard-read", "clipboard-write"]);
-  await page.getByRole("button", { name: "分享接龙" }).click();
-  await expect
-    .poll(() => page.evaluate(() => navigator.clipboard.readText()))
-    .toContain(game);
-  expect(await page.evaluate(() => navigator.clipboard.readText())).toContain(
-    url,
-  );
+  if (browserName === "chromium") {
+    await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+    await page.getByRole("button", { name: "分享接龙" }).click();
+    await expect
+      .poll(() => page.evaluate(() => navigator.clipboard.readText()))
+      .toContain(game);
+    expect(await page.evaluate(() => navigator.clipboard.readText())).toContain(
+      url,
+    );
+  } else {
+    await page.evaluate(() => {
+      Object.defineProperty(navigator, "clipboard", {
+        configurable: true,
+        value: {
+          writeText: async () => {
+            throw new DOMException(
+              "Blocked for fallback coverage",
+              "NotAllowedError",
+            );
+          },
+        },
+      });
+      document.execCommand = () => false;
+    });
+    await page.getByRole("button", { name: "分享接龙" }).click();
+    const manual = page.getByLabel("分享内容（点击文本框全选后复制）");
+    await expect(manual).toBeVisible();
+    expect(await manual.inputValue()).toContain(game);
+    expect(await manual.inputValue()).toContain(url);
+  }
   const guestContext = await browser.newContext({
     baseURL: process.env.TEST_BASE_URL,
   });
@@ -101,7 +124,8 @@ test("lost creation response can be retried after reload without duplicate reser
   );
   await expect(page.getByLabel("游戏名称", { exact: true })).toHaveValue(game);
   await page.reload();
-  await fill(page, game);
+  await page.getByRole("button", { name: "恢复草稿", exact: true }).click();
+  await expect(page.getByLabel("游戏名称", { exact: true })).toHaveValue(game);
   await page.getByRole("button", { name: "创建预约，召集队友" }).click();
   await expect(page).toHaveURL(/\/reservation\/(?!new$)[a-z0-9-]+$/);
   await expect(page.getByText("你已在接龙名单中")).toBeVisible();
@@ -150,4 +174,127 @@ test("administrator first login requires password change and opens management", 
   await expect(
     page.locator("ol").getByText("修改本人密码", { exact: true }),
   ).toBeVisible();
+});
+
+test("creation drafts recover after reload, and confirmed saves clear their local state", async ({
+  page,
+}) => {
+  const game = "Draft-" + randomUUID();
+  await page.goto("/reservation/new");
+  await fill(page, game);
+  await page.reload();
+  await expect(
+    page.getByRole("region", { name: "恢复预约草稿" }),
+  ).toBeVisible();
+  await expect(page.getByLabel("游戏名称", { exact: true })).toHaveValue("");
+  await page.getByRole("button", { name: "恢复草稿", exact: true }).click();
+  await expect(page.getByLabel("游戏名称", { exact: true })).toHaveValue(game);
+  await expect(page.getByLabel("备注（选填）")).toHaveValue(
+    "Browser test notes",
+  );
+  await page.getByRole("button", { name: "创建预约，召集队友" }).click();
+  await expect(page).toHaveURL(/\/reservation\/(?!new$)[a-z0-9-]+$/);
+  expect(
+    await page.evaluate(() =>
+      sessionStorage.getItem("party-reservation-draft:new"),
+    ),
+  ).toBeNull();
+  expect(
+    await page.evaluate(() => sessionStorage.getItem("party-creation")),
+  ).toBeNull();
+});
+test("a lost creation response can be looked up without submitting expired form values", async ({
+  page,
+}) => {
+  await page.goto("/reservation/new");
+  const game = "Lookup-" + randomUUID();
+  await fill(page, game);
+  await page.route(
+    "**/api/reservations",
+    async (route) => {
+      if (route.request().method() !== "POST") return route.continue();
+      await route.fetch();
+      await route.abort("connectionfailed");
+    },
+    { times: 1 },
+  );
+  await page.getByRole("button", { name: "创建预约，召集队友" }).click();
+  await expect(page.locator('form [role="alert"]')).toContainText(
+    "操作可能已生效",
+  );
+  await page.reload();
+  await page.getByRole("button", { name: "恢复草稿", exact: true }).click();
+  await page.getByLabel("预约日期", { exact: true }).fill("2000-01-01");
+  await page
+    .getByRole("button", { name: "查看上次创建结果", exact: true })
+    .click();
+  await expect(page).toHaveURL(/\/reservation\/(?!new$)[a-z0-9-]+$/);
+  await expect(page.getByText("你已在接龙名单中")).toBeVisible();
+  const listing = await page.request.get(
+    "/api/reservations?q=" + encodeURIComponent(game),
+  );
+  expect((await listing.json()).data.total).toBe(1);
+  expect(
+    await page.evaluate(() => sessionStorage.getItem("party-creation")),
+  ).toBeNull();
+});
+test("editing drafts recover only against their original version and never replace newer server values", async ({
+  page,
+}) => {
+  await page.goto("/reservation/new");
+  await fill(page, "Edit-draft-" + randomUUID());
+  await page.getByRole("button", { name: "创建预约，召集队友" }).click();
+  await expect(page).toHaveURL(/\/reservation\/(?!new$)[a-z0-9-]+$/);
+  const url = page.url();
+  const id = url.split("/").pop()!;
+  await page.goto(url + "/edit");
+  await page.getByLabel("备注（选填）").fill("My unsaved draft");
+  await page.reload();
+  await page.getByRole("button", { name: "恢复草稿", exact: true }).click();
+  await expect(page.getByLabel("备注（选填）")).toHaveValue("My unsaved draft");
+  const current = (
+    await (await page.request.get("/api/reservations/" + id)).json()
+  ).data;
+  const update = await page.request.patch("/api/reservations/" + id, {
+    headers: { Origin: new URL(url).origin },
+    data: {
+      gameName: current.gameName,
+      hostName: current.hostName,
+      maxPlayers: current.maxPlayers,
+      scheduledAt: current.scheduledAt,
+      description: "Newer server notes",
+      editVersion: current.editVersion,
+    },
+  });
+  expect(update.status()).toBe(200);
+  await page.reload();
+  await expect(page.getByLabel("旧版本草稿内容")).toHaveValue(
+    /My unsaved draft/,
+  );
+  await expect(page.getByLabel("备注（选填）")).toHaveValue(
+    "Newer server notes",
+  );
+  await expect(
+    page.getByRole("button", { name: "恢复草稿", exact: true }),
+  ).toHaveCount(0);
+  await expect(
+    page.getByRole("button", { name: "保存修改", exact: true }),
+  ).toBeDisabled();
+  page.once("dialog", (dialog) => dialog.accept());
+  await page
+    .getByRole("button", { name: "使用最新信息继续", exact: true })
+    .click();
+  await page.getByLabel("最大参与人数 · 含发起人").fill("4");
+  await page.getByRole("button", { name: "保存修改", exact: true }).click();
+  await expect(page).toHaveURL(url);
+  await expect(
+    page.getByText("Newer server notes", { exact: true }),
+  ).toBeVisible();
+  expect(
+    await page.evaluate(
+      (reservationId) =>
+        sessionStorage.getItem("party-reservation-draft:edit:" + reservationId),
+      id,
+    ),
+  ).toBeNull();
 });

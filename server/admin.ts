@@ -176,3 +176,25 @@ export async function replaceAdminPassword(
     return admin;
   });
 }
+
+export async function revokeAdminSessions(actor: {
+  id: number;
+  username: string;
+  sessionVersion: number;
+}) {
+  return writeTransaction(async (tx) => {
+    const result = await tx.adminCredential.updateMany({
+      where: {
+        id: actor.id,
+        isActive: true,
+        sessionVersion: actor.sessionVersion,
+      },
+      data: { sessionVersion: { increment: 1 } },
+    });
+    if (result.count)
+      await recordAdminAction(tx, actor, "ADMIN_REVOKE_SESSIONS", {
+        id: String(actor.id),
+        label: actor.username,
+      });
+  });
+}

@@ -10,6 +10,7 @@ export const auditActions = [
   "ADMIN_ENABLE",
   "ADMIN_RESET_PASSWORD",
   "ADMIN_CHANGE_PASSWORD",
+  "ADMIN_REVOKE_SESSIONS",
 ] as const;
 export type AuditAction = (typeof auditActions)[number];
 export const auditLabels: Record<AuditAction, string> = {
@@ -23,6 +24,7 @@ export const auditLabels: Record<AuditAction, string> = {
   ADMIN_ENABLE: "启用管理员",
   ADMIN_RESET_PASSWORD: "重置临时密码",
   ADMIN_CHANGE_PASSWORD: "修改本人密码",
+  ADMIN_REVOKE_SESSIONS: "退出所有设备",
 };
 export const auditQuerySchema = z.object({
   q: z.string().trim().max(80, "搜索内容最多 80 字").default(""),

@@ -17,6 +17,7 @@ import { join, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import { DatabaseSync } from "node:sqlite";
 import { pathToFileURL } from "node:url";
+import { buildInfo } from "./build-info.mjs";
 
 const dataFiles = [
   "reservations.db",
@@ -70,8 +71,32 @@ function validateDatabase(directory) {
           .get(table)
       )
         throw new Error("备份缺少应用数据表");
+    return db
+      .prepare(
+        `
+      SELECT migration_name AS name, checksum,
+             CAST(finished_at AS TEXT) AS finishedAt
+      FROM _prisma_migrations
+      WHERE finished_at IS NOT NULL AND rolled_back_at IS NULL
+      ORDER BY migration_name
+    `,
+      )
+      .all();
   } finally {
     db.close();
+  }
+}
+function inspectSnapshotDatabase(directory, files) {
+  // Inspect a scratch copy so SQLite recovery never writes into the snapshot.
+  const scratch = mkdtempSync(join(tmpdir(), "party-verify-"));
+  try {
+    for (const name of dataFiles.filter(
+      (name) => name.startsWith("reservations.db") && files[name],
+    ))
+      copyFileSync(join(directory, name), join(scratch, name));
+    return validateDatabase(scratch);
+  } finally {
+    rmSync(scratch, { recursive: true, force: true });
   }
 }
 export function verifySnapshot(directory) {
@@ -80,7 +105,7 @@ export function verifySnapshot(directory) {
     readFileSync(join(directory, "manifest.json"), "utf8"),
   );
   if (
-    manifest.version !== 1 ||
+    ![1, 2].includes(manifest.version) ||
     !manifest.files ||
     typeof manifest.files !== "object" ||
     Array.isArray(manifest.files) ||
@@ -114,16 +139,18 @@ export function verifySnapshot(directory) {
     )
       throw new Error("管理员初始化配置无效");
   }
-  // Verify a scratch copy so SQLite recovery never writes into the snapshot.
-  const scratch = mkdtempSync(join(tmpdir(), "party-verify-"));
-  try {
-    for (const name of dataFiles.filter(
-      (name) => name.startsWith("reservations.db") && manifest.files[name],
-    ))
-      copyFileSync(join(directory, name), join(scratch, name));
-    validateDatabase(scratch);
-  } finally {
-    rmSync(scratch, { recursive: true, force: true });
+  const migrations = inspectSnapshotDatabase(directory, manifest.files);
+  if (manifest.version === 2) {
+    const app = manifest.application;
+    if (
+      !app ||
+      typeof app !== "object" ||
+      !["version", "revision", "node", "prisma"].every(
+        (key) => typeof app[key] === "string" && app[key].length > 0,
+      ) ||
+      JSON.stringify(manifest.migrations) !== JSON.stringify(migrations)
+    )
+      throw new Error("备份版本或迁移信息无效");
   }
   return manifest;
 }
@@ -161,7 +188,13 @@ export function createSnapshot(
     writeFileSync(
       join(pending, "manifest.json"),
       JSON.stringify(
-        { version: 1, createdAt: new Date().toISOString(), files },
+        {
+          version: 2,
+          createdAt: new Date().toISOString(),
+          application: buildInfo(),
+          migrations: inspectSnapshotDatabase(pending, files),
+          files,
+        },
         null,
         2,
       ) + "\n",

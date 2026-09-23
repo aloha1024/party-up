@@ -5,6 +5,13 @@ sandbox="$(mktemp -d)"
 trap 'rm -rf -- "$sandbox"' EXIT
 mkdir -p "$sandbox/project/scripts" "$sandbox/bin"
 cp scripts/docker-smoke.sh "$sandbox/project/scripts/docker-smoke.sh"
+cat > "$sandbox/project/scripts/docker-backup-smoke.sh" <<'MOCK'
+#!/usr/bin/env bash
+set -Eeuo pipefail
+[[ "$(cat "$2/docker-ci-project")" == "$1" ]]
+touch "$MOCK_STATE/backup-drill"
+[[ "$MOCK_MODE" != backup-failure ]] || { echo 'Backup drill failed' >&2; exit 1; }
+MOCK
 cat > "$sandbox/bin/docker" <<'MOCK'
 #!/usr/bin/env bash
 set -Eeuo pipefail
@@ -13,7 +20,7 @@ if [[ "$1" == compose ]]; then
   shift
   while [[ "$1" == --env-file || "$1" == -p || "$1" == -f ]]; do shift 2; done
   case "$*" in
-    'up -d --build --wait --wait-timeout 120') exit 0 ;;
+    'up -d --build --wait --wait-timeout 120'|'up -d --no-build --wait --wait-timeout 120') exit 0 ;;
     'port web 3000')
       if [[ ! -f "$MOCK_STATE/restarted" ]]; then echo '0.0.0.0:31001'; exit 0; fi
       count=0
@@ -91,6 +98,7 @@ MOCK
 chmod +x "$sandbox/bin/"*
 export PATH="$sandbox/bin:$PATH"
 export MOCK_STATE MOCK_MODE
+unset PARTY_IMAGE
 run_case() {
   MOCK_MODE="$1"
   MOCK_STATE="$sandbox/$MOCK_MODE"
@@ -110,6 +118,7 @@ test -f "$MOCK_STATE/replayed"
 test -f "$MOCK_STATE/runtime-check"
 test -f "$MOCK_STATE/cli-check"
 test -f "$MOCK_STATE/image-check"
+test -f "$MOCK_STATE/backup-drill"
 grep -q 'Docker restart healthy at http://127.0.0.1:32002' "$MOCK_STATE/output"
 run_case delayed success
 test -f "$MOCK_STATE/replayed"
@@ -132,4 +141,12 @@ test -f "$MOCK_STATE/runtime-check"
 test ! -f "$MOCK_STATE/cli-check"
 test ! -f "$MOCK_STATE/image-check"
 grep -q 'Unexpected test dependency in production image: @playwright/test' "$MOCK_STATE/output"
-echo 'Docker smoke orchestration: 6 scenarios passed (mocked Docker/curl)'
+run_case backup-failure failure
+test -f "$MOCK_STATE/backup-drill"
+test ! -f "$MOCK_STATE/image-check"
+export PARTY_IMAGE=party-up-ci:test
+run_case prebuilt success
+grep -q 'compose.image.yaml up -d --no-build' "$MOCK_STATE/commands"
+if grep -q 'up -d --build' "$MOCK_STATE/commands"; then exit 1; fi
+test -f "$MOCK_STATE/backup-drill"
+echo 'Docker smoke orchestration: 8 scenarios passed (mocked Docker/curl)'

@@ -26,7 +26,7 @@ Use Node.js 22.13+ and npm.
 - `npm run typecheck`: check TypeScript.
 - `npm test`: build and run tests with a temporary database and independent HTTP service.
 - `npm run test:unit`: skip the build and HTTP tests.
-- `npm run test:e2e`: isolated Playwright tests; install Chromium first.
+- `npm run test:e2e`: isolated Playwright tests; install Chromium and WebKit first (`npx playwright install --with-deps chromium webkit`).
 - `npm run benchmark:queries`: synthetic in-memory query comparison.
 - `npm run build` / `npm start`: build / run production.
 - `docker compose up -d --build`: deploy using Docker.
@@ -35,7 +35,7 @@ Use Node.js 22.13+ and npm.
 
 Use strict TypeScript, two-space indentation, double quotes, and semicolons. Follow Prettier formatting: `npx prettier --write <files>`. No lint command exists.
 
-Use kebab-case filenames, PascalCase components/types, and camelCase functions/variables. Follow App Router names such as `page.tsx` and `route.ts`. Preserve Chinese interface text and responsive dark styling. Shell scripts require LF endings.
+Use kebab-case filenames, PascalCase components/types, and camelCase functions/variables. Follow App Router names such as `page.tsx` and `route.ts`. Preserve Chinese interface text and responsive dark styling. Shell scripts require LF endings. Docker uses Next standalone plus `docker/maintenance`; keep its Prisma versions and lockfile aligned with the root package.
 
 ## Testing Guidelines
 

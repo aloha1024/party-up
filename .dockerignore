@@ -23,3 +23,5 @@ npm-debug.log*
 
 playwright-report/
 test-results/
+
+build-info.json

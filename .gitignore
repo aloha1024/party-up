@@ -17,3 +17,5 @@ server.env
 
 playwright-report/
 test-results/
+
+build-info.json

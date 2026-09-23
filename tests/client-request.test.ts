@@ -206,3 +206,19 @@ test("client requests retain the server conflict code for a dedicated editor rec
     return true;
   });
 });
+
+test("server request id is exposed for support without trusting arbitrary header text", async (t) => {
+  const id = "12345678-1234-1234-1234-123456789abc";
+  t.mock.method(globalThis, "fetch", async () =>
+    Response.json(
+      { error: "服务繁忙", code: "BUSY" },
+      { status: 503, headers: { "X-Request-ID": id } },
+    ),
+  );
+  await assert.rejects(request("/edit", "PATCH"), (error: unknown) => {
+    assert.ok(error instanceof ClientRequestError);
+    assert.equal(error.requestId, id);
+    assert.ok(error.message.includes(id));
+    return true;
+  });
+});

@@ -4,6 +4,7 @@ import { ZodError } from "zod";
 import { AppError } from "./errors";
 import { limitWrite } from "./rate-limit";
 import { withRequestBudget } from "./request-budget";
+import { errorCategory, requestContext } from "./request-log";
 import { readJsonBody } from "./request-body";
 const cookieName = "party_identity";
 export async function identity() {
@@ -15,7 +16,25 @@ export async function respond(
   operation: (token: string) => Promise<unknown>,
   withIdentity = true,
 ) {
+  const context = requestContext(req.method, req.nextUrl.pathname);
   return withRequestBudget(async () => {
+    const send = (
+      payload: unknown,
+      status = 200,
+      code?: string,
+      retryAfter?: number,
+      errorType?: string,
+    ) => {
+      context.finish(status, code, errorType);
+      return NextResponse.json(payload, {
+        status,
+        headers: {
+          "Cache-Control": "no-store",
+          "X-Request-ID": context.requestId,
+          ...(retryAfter ? { "Retry-After": String(retryAfter) } : {}),
+        },
+      });
+    };
     try {
       if (req.method !== "GET" && !isSameOrigin(req))
         throw new AppError("ORIGIN", "请求来源无效，请刷新页面重试", 403);
@@ -28,44 +47,37 @@ export async function respond(
           "请先建立浏览器报名身份后再提交",
           428,
         );
-      const token = previous || "";
-      const response = NextResponse.json(
-        { data: await operation(token) },
-        { headers: { "Cache-Control": "no-store" } },
-      );
-      return response;
+      return send({ data: await operation(previous || "") });
     } catch (error) {
-      if (error instanceof ZodError)
-        return NextResponse.json(
-          { error: error.issues[0]?.message ?? "输入无效" },
-          { status: 400 },
-        );
-      if (error instanceof AppError)
-        return NextResponse.json(
-          { error: error.message, code: error.code },
-          {
-            status: error.status,
-            headers: {
-              "Cache-Control": "no-store",
-              ...(error.retryAfter
-                ? { "Retry-After": String(error.retryAfter) }
-                : {}),
-            },
-          },
-        );
-      if (error instanceof SyntaxError)
-        return NextResponse.json(
-          { error: "请求内容格式无效" },
-          { status: 400 },
-        );
-      console.error("Reservation request failed", error);
-      return NextResponse.json(
-        { error: "服务暂时不可用，请稍后重试" },
-        { status: 503 },
+      let message = "服务暂时不可用，请稍后重试";
+      let status = 503;
+      let code = "INTERNAL";
+      let retryAfter: number | undefined;
+      if (error instanceof ZodError) {
+        message = error.issues[0]?.message ?? "输入无效";
+        status = 400;
+        code = "VALIDATION";
+      } else if (error instanceof AppError) {
+        message = error.message;
+        status = error.status;
+        code = error.code;
+        retryAfter = error.retryAfter;
+      } else if (error instanceof SyntaxError) {
+        message = "请求内容格式无效";
+        status = 400;
+        code = "INVALID_JSON";
+      }
+      return send(
+        { error: message, code, requestId: context.requestId },
+        status,
+        code,
+        retryAfter,
+        code === "INTERNAL" ? errorCategory(error) : undefined,
       );
     }
   });
 }
+
 function isSameOrigin(req: NextRequest) {
   const origin = req.headers.get("origin");
   if (!origin) return false;
