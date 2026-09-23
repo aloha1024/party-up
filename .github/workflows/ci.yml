@@ -63,3 +63,32 @@ jobs:
             candidate-image-id.txt
           compression-level: 0
           retention-days: 1
+          if-no-files-found: error
+  publish:
+    needs: [test, docker]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && github.repository == 'aloha1024/party-up'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - name: Download this run's tested image
+        uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5
+        with:
+          name: tested-container
+          path: tested-container
+      - name: Load the tested image
+        run: docker load --input tested-container/candidate-image.tar
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Publish and verify the tested image
+        id: image
+        run: bash scripts/publish-image.sh tested-container

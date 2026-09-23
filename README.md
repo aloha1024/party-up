@@ -118,31 +118,32 @@ docker compose logs --tail=100 web
 - `reservations.db`：预约、报名和管理员密码哈希。
 - `admin-bootstrap.json`：管理员初始化配置与会话密钥，不含明文密码。
 
-### 使用已验证的固定镜像
+### 使用 GHCR 中已验证的镜像
 
-CI 在 main 检查通过后保存 `tested-container` 构建产物，包含 `candidate-image.tar` 和 `candidate-image-id.txt`，保留 1 天。它就是完成容器检查的同一个镜像，不会在服务器重新构建。镜像仓库自动发布尚待授权；当前可下载该产物，在服务器导入：
+`main` 每次推送通过全部检查后，CI 会将**同一个已测试镜像**发布到 `ghcr.io/aloha1024/party-up`。发布任务不重新构建，先核对镜像 ID、提交版本及运行版本，推送后再按摘要拉取核对。Pull Request 和手动检查不会发布。
 
-```bash
-docker load --input candidate-image.tar
-# 将完整提交号替换成该次 CI 的 40 位 commit SHA
-docker image inspect --format '{{.Id}}' party-up-ci:完整提交号
-cat candidate-image-id.txt
-```
+- 提交标签：`ghcr.io/aloha1024/party-up:sha-完整40位提交号`。
+- 推荐部署：使用该次 Actions 的 **publish → Summary** 输出的 `ghcr.io/aloha1024/party-up@sha256:完整摘要`。提交标签可被重推，摘要固定镜像内容。
+- 自动发布使用 GitHub 提供的 `GITHUB_TOKEN`，只有 publish 任务拥有 `packages: write`，无需配置额外发布密码。
+- 首次 GHCR 包默认私有。服务器拉取私有镜像时先执行 `docker login ghcr.io -u aloha1024`，在密码提示中输入具有 `read:packages` 权限的 classic PAT。包设为 public 后才支持匿名拉取，发布流程不修改包可见性。参考 [GitHub 包权限说明](https://docs.github.com/en/packages/learn-github-packages/configuring-a-packages-access-control-and-visibility)。
 
-两个 image ID 应一致。导入和核对不改变正在运行的网站。首次从源码部署切换时，先按原部署配置运行 `bash scripts/backup.sh backup`，再在原项目目录的 `.env` 中设置：
+首次从源码部署切换时，先在原项目目录按原配置运行 `bash scripts/backup.sh backup`，再在原 `.env` 中设置（将摘要替换为该次发布的实际值）：
 
 ```dotenv
 COMPOSE_FILE=compose.image.yaml
-PARTY_IMAGE=party-up-ci:完整提交号
+PARTY_IMAGE=ghcr.io/aloha1024/party-up@sha256:完整摘要
 ```
 
-`compose.image.yaml` 是独立配置，不与 `compose.yaml` 叠加。它沿用同一项目的 `reservation-data` 卷；必须保持原目录或原来的 `-p` 项目名。设置后，启动、日志、备份命令仍可使用 `docker compose`：
+`compose.image.yaml` 是独立配置，不与 `compose.yaml` 叠加。它沿用同一项目的 `reservation-data` 卷；必须保持原目录或原来的 `-p` 项目名。设置后执行：
 
 ```bash
+docker compose pull web
 docker compose up -d --no-build --wait web
 ```
 
-后续更新先导入并核对新镜像，**保留旧镜像和旧的 `PARTY_IMAGE`，在修改 `.env` 前备份**，然后替换 `PARTY_IMAGE` 并执行上述启动命令。若镜像来自镜像仓库，固定提交标签或优先使用 `仓库@sha256:摘要`，先 `docker compose pull web` 再启动。当前 CI 只构建 Linux amd64 镜像。
+后续更新先确认目标发布已成功，**保留旧镜像和旧的 `PARTY_IMAGE`，在修改 `.env` 前备份**，然后替换为新摘要，拉取并启动。当前 CI 只构建 Linux amd64 镜像。
+
+候选镜像仍以 `tested-container` 构建产物保留 1 天，包含 `candidate-image.tar` 和 `candidate-image-id.txt`，可用于排查发布问题。超过保留期后，应重新运行完整检查流程；仅重跑 publish 无法取得已过期产物。
 
 回退分两种情况：
 
@@ -284,18 +285,19 @@ types/        共享类型
 
 2026-09-23：生产构建、类型检查和 71 项业务／HTTP 测试通过；浏览器 29 项通过，8 项按平台跳过（首次主管理员初始化只执行一次，普通 HTTP 专用场景仅在对应项目执行）。包含 Chromium 桌面／手机、WebKit/iPhone 和真实非安全 HTTP 域名。
 
-Linux 下按最终镜像组成搭建的独立运行目录，已验证启动、迁移、创建报名、管理员改密与备份恢复。完整 Docker 镜像构建及容器级演练由 CI 执行；本地未启动 Docker daemon，不能以运行目录验证替代容器验证。
+Linux 下按最终镜像组成搭建的独立运行目录，已验证启动、迁移、创建报名、管理员改密与备份恢复。完整 Docker 镜像构建及容器级演练已在 [GitHub Actions](https://github.com/aloha1024/party-up/actions/runs/35826736177) 通过，包括恢复前后预约、参与者、管理员凭据、配置和原运行状态；镜像为 605,831,953 字节，约 578 MiB。
 
 ## 更新记录
 
 按更新日期倒序整理，日期使用北京时间（UTC+8）。第三至第五轮优化于 2026-09-22 一并发布；后续未发布内容会单独标注。
 
-### 2026-09-23 · 恢复、诊断与容器维护（未发布）
+### 2026-09-23 · 恢复、诊断与容器维护
 
 - 备份／恢复后等待网站健康，失败明确返回非零；新增真实 Docker 数据恢复演练。
 - 创建／编辑草稿可恢复，未确认创建可独立查询结果；旧版本草稿保留且不覆盖新信息。
 - API 错误编号、结构化日志、日志轮转和后台运行版本，方便服务器排错。
-- Next standalone 镜像与独立维护依赖，新增固定镜像部署配置；备份记录应用版本和数据库迁移，兼容旧备份。
+- Next standalone 镜像与独立维护依赖，真实 CI 镜像约 578 MiB，比上一轮减少约 31%；备份记录应用版本和数据库迁移，兼容旧备份。
+- main 全部检查通过后，将同一个候选镜像发布到 GHCR，校验镜像 ID、提交版本与摘要拉取结果；提供固定摘要部署及回退说明。
 - 普通 HTTP 首次身份初始化增加跨标签页协调，覆盖 Cookie／存储被阻止；浏览器测试新增 WebKit/iPhone。
 - 管理员可主动退出所有设备，旧会话立即失效，并记录操作；无新增数据库迁移。
 
