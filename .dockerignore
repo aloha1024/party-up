@@ -18,6 +18,7 @@ coverage
 npm-debug.log*
 
 .backup.lock
+.maintenance/
 **/admin-bootstrap.json
 **/server.env
 

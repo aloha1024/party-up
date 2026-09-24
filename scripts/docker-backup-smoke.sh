@@ -13,7 +13,7 @@ fi
 compose=(docker compose --env-file "$scratch/env" -p "$project" -f "$compose_file")
 deployment="$scratch/deployment"
 mkdir -p "$deployment/scripts"
-cp scripts/backup.sh scripts/wait-for-web.sh "$deployment/scripts/"
+cp scripts/backup.sh scripts/wait-for-web.sh scripts/maintenance-state.sh "$deployment/scripts/"
 cp "$scratch/env" "$deployment/.env"
 "${compose[@]}" config --format json > "$scratch/compose.json"
 image_id="$("${compose[@]}" images -q web)"

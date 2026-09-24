@@ -2,11 +2,12 @@
 # Exercise Linux orchestration with a fake Docker command; never contacts Docker.
 set -Eeuo pipefail
 source_script="$PWD/scripts/backup.sh"
-sandbox="$(mktemp -d)"
+sandbox="$(mktemp -d "${TMPDIR:-/tmp}/party backup.XXXXXX")"
 trap 'rm -rf -- "$sandbox"' EXIT
 mkdir -p "$sandbox/project/scripts" "$sandbox/bin" "$sandbox/project/snapshot"
 cp "$source_script" "$sandbox/project/scripts/backup.sh"
 cp scripts/wait-for-web.sh "$sandbox/project/scripts/wait-for-web.sh"
+cp scripts/maintenance-state.sh "$sandbox/project/scripts/maintenance-state.sh"
 printf 'APP_PORT=3001\n' > "$sandbox/project/.env"
 printf 'APP_PORT=8080\n' > "$sandbox/project/snapshot/server.env"
 cat > "$sandbox/bin/docker" <<'MOCK'
@@ -47,13 +48,24 @@ export MOCK_LOG="$sandbox/docker.log"
 export WEB_HEALTH_TIMEOUT=4
 run() { bash "$sandbox/project/scripts/backup.sh" "$@" >"$sandbox/output" 2>&1; }
 : > "$MOCK_LOG"
+(
+  exec 8>"$sandbox/project/.backup.lock"
+  flock 8
+  if run backup; then echo '维护锁冲突必须拒绝备份'; exit 1; fi
+)
+test ! -s "$MOCK_LOG"
 run backup
+grep -q '^status=success$' "$sandbox/project/.maintenance/backup"
+success="$(sed -n 's/^last_success=//p' "$sandbox/project/.maintenance/backup")"
+test -n "$success"
 grep -q 'compose stop web' "$MOCK_LOG"
 grep -q 'compose start web' "$MOCK_LOG"
 grep -q 'inspect --format' "$MOCK_LOG"
 : > "$MOCK_LOG"
 export MOCK_FAIL=backup
 if run backup; then echo "备份失败应返回错误"; exit 1; fi
+grep -q '^status=failed$' "$sandbox/project/.maintenance/backup"
+grep -Fxq "last_success=$success" "$sandbox/project/.maintenance/backup"
 grep -q 'compose start web' "$MOCK_LOG"
 : > "$MOCK_LOG"
 export MOCK_FAIL=verify
@@ -88,6 +100,7 @@ for failure in start unhealthy timeout missing-container no-health; do
   : > "$MOCK_LOG"
   export MOCK_FAIL="$failure"
   if run backup; then echo "重启/健康检查失败必须返回错误：$failure"; exit 1; fi
+  grep -q '^status=failed$' "$sandbox/project/.maintenance/backup"
   grep -q '备份文件保留' "$sandbox/output"
   grep -q 'compose stop web' "$MOCK_LOG"
   if grep -q '网站已恢复运行并通过健康检查' "$sandbox/output"; then exit 1; fi

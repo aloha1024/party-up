@@ -13,6 +13,7 @@ node_modules/
 admin-bootstrap.json
 backups/
 .backup.lock
+.maintenance/
 server.env
 
 playwright-report/

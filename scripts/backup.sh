@@ -22,12 +22,14 @@ case "$action" in
   *) echo "用法：bash scripts/backup.sh backup | verify 备份目录 | restore 备份目录 --confirm"; exit 1 ;;
 esac
 [ -f .env ] || { echo "缺少项目 .env 配置" >&2; exit 1; }
+source scripts/maintenance-state.sh
+last_success="$(state_read backup last_success)"
+attempt="$(date -u +%FT%TZ)"
 helper=(docker compose run --rm --no-deps -T --user 0:0 --entrypoint node)
 if [ "$action" != backup ]; then
   "${helper[@]}" -v "$snapshot:/snapshot:ro" web scripts/backup-data.mjs verify /snapshot
   [ "$action" = verify ] && exit 0
 fi
-running="$(docker compose ps --status running -q web)"
 resume=0
 restore_started=0
 env_tmp=""
@@ -47,11 +49,20 @@ cleanup() {
       status=1
     fi
   fi
+  if [ "$action" = backup ]; then
+    result=failed
+    if [ "$status" = 0 ]; then result=success; last_success="$(date -u +%FT%TZ)"; fi
+    state_write backup "last_attempt=$attempt" "last_success=$last_success" "status=$result"
+  fi
   exit "$status"
 }
 trap cleanup EXIT
 trap 'exit 130' INT
 trap 'exit 143' TERM
+if [ "$action" = backup ]; then
+  state_write backup "last_attempt=$attempt" "last_success=$last_success" 'status=running'
+fi
+running="$(docker compose ps --status running -q web)"
 if [ -n "$running" ]; then
   resume=1
   docker compose stop web

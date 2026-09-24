@@ -175,6 +175,51 @@ bash scripts/backup.sh restore backups/backup-实际目录名 --confirm
 
 `docker compose down` 会保留数据卷；**`docker compose down -v` 会删除数据**。SQLite 部署保持单个网站实例；公网访问应配置 HTTPS。
 
+## 定时备份与本机健康检查（Linux systemd）
+
+在已部署的原项目目录中执行。需要运行 systemd 的 Linux、Docker Compose v2、util-linux（`flock`、`runuser`）及 coreutils（`timeout`）。指定的部署用户需要能访问项目、读取 `.env` 并连接 Docker；请使用平时执行备份的同一个用户，避免状态文件权限冲突。
+
+```bash
+# 安装；固定当前项目绝对路径，支持路径中的空格
+sudo bash scripts/maintenance-systemd.sh install "$(id -un)"
+
+# 查看下一次运行时间与最近状态（记录时间为 UTC）
+bash scripts/maintenance-systemd.sh status
+
+# 手动触发一次备份；会短暂停站，并等待完成
+sudo systemctl start party-up-backup.service
+
+# 查看备份与健康状态变化日志
+sudo journalctl -u party-up-backup.service -u party-up-health.service --since today
+
+# 暂停定时任务；不会中断正在执行的备份
+sudo systemctl disable --now party-up-backup.timer party-up-health.timer
+
+# 重新启用
+sudo systemctl enable --now party-up-backup.timer party-up-health.timer
+
+# 卸载定时任务；保留网站、配置、状态、数据库及备份
+sudo bash scripts/maintenance-systemd.sh uninstall
+```
+
+每日 **北京时间 04:00** 自动运行现有备份脚本，默认保留最近 7 份常规备份，恢复前快照不自动清理。服务器错过执行时间不会开机补跑。沿用现有停站、校验和恢复运行流程；原本已停止的网站不会被启动。每台服务器这套安装命令仅管理一个项目，遇到同名但属于其他项目的单元会拒绝覆盖。
+
+每分钟检查一次 Docker 容器健康状态，只记录状态变化，不自动重启网站。备份、恢复与检查共用 `.backup.lock`，维护期间跳过检查，结束后由下一次检查更新状态。Docker 查询有超时限制；连续相同故障不会重复输出日志，恢复会记录一次。健康检查进程执行成功不代表网站健康，请查看状态文件或日志中的 `status`。
+
+`.maintenance/backup` 保存 `last_attempt`、`last_success` 和 `status`；`last_success` 仅在备份及原服务运行状态恢复都成功后更新。`.maintenance/health` 保存检查时间与健康状态。状态目录权限为 700，文件为 600，不提交到 Git、不打包进镜像。`running` 长时间未更新可能是维护仍在执行或进程意外终止，请结合 `systemctl status party-up-backup.service` 和日志排查；不要直接删除锁文件。安装单元权限为 600，不包含管理员凭据。
+
+定时任务不继承交互终端的 `BACKUP_DIR` / `KEEP_BACKUPS`。需要调整时执行 `sudo systemctl edit party-up-backup.service`，添加：
+
+```ini
+[Service]
+Environment="KEEP_BACKUPS=14"
+Environment="BACKUP_DIR=/安全路径/party-up-backups"
+```
+
+确保部署用户可写该目录。卸载会保留自定义 systemd drop-in 配置，重新安装时继续生效。安装/升级工具前后可用 `systemctl cat party-up-backup.service` 核对配置；迁移项目目录前先从原目录卸载，再从新目录安装。
+
+**当前未启用异地备份或外部通知。** 本机检查无法发现整机离线，本机备份无法防护整盘损坏；当前仅提供本机状态与 journal 日志。
+
 ## 本地开发
 
 需要 Node.js 22.13+ 和 npm。在项目目录执行：
@@ -288,6 +333,13 @@ types/        共享类型
 Linux 下按最终镜像组成搭建的独立运行目录，已验证启动、迁移、创建报名、管理员改密与备份恢复。完整 Docker 镜像构建及容器级演练已在 [GitHub Actions](https://github.com/aloha1024/party-up/actions/runs/35826736177) 通过，包括恢复前后预约、参与者、管理员凭据、配置和原运行状态；镜像为 605,831,953 字节，约 578 MiB。
 
 ## 更新记录
+
+### 2026-09-24 · 定时备份与本机健康检查
+
+- 新增 systemd 安装、状态查看与卸载入口，每日北京时间 04:00 备份，错过不补跑。
+- 每分钟检查容器健康状态，维护期间通过共享锁跳过检查，仅记录状态变化。
+- 记录最近备份尝试、成功时间和检查结果；保留现有备份格式及恢复流程，无数据库迁移。
+- 当前只保存本机备份和日志，未启用异地副本或外部通知。
 
 按更新日期倒序整理，日期使用北京时间（UTC+8）。第三至第五轮优化于 2026-09-22 一并发布；后续未发布内容会单独标注。
 
