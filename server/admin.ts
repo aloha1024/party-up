@@ -59,10 +59,13 @@ export async function currentAdmin() {
   if (!adminBootstrapConfigured()) return null;
   const session = readAdminSession((await cookies()).get(ADMIN_COOKIE)?.value);
   if (!session) return null;
-  await ensureAdminRecord();
-  const admin = await db.adminCredential.findUnique({
-    where: { id: session.adminId },
-  });
+  const owner = await ensureAdminRecord();
+  const admin =
+    session.adminId === owner.id
+      ? owner
+      : await db.adminCredential.findUnique({
+          where: { id: session.adminId },
+        });
   if (
     !admin ||
     !admin.isActive ||
@@ -95,7 +98,10 @@ export async function verifyAdminCredentials(
   password: string,
 ) {
   const owner = await ensureAdminRecord();
-  const admin = await db.adminCredential.findUnique({ where: { username } });
+  const admin =
+    username === owner.username
+      ? owner
+      : await db.adminCredential.findUnique({ where: { username } });
   // Perform password hashing even for unknown usernames.
   const passwordValid = await verifyPasswordHash(
     password,

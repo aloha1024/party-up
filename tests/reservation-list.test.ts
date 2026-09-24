@@ -2,6 +2,7 @@ import "./support/isolated";
 import { test, after } from "node:test";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
+import type { Prisma } from "@prisma/client";
 import { db } from "../server/db";
 import { listReservations } from "../server/reservation-list";
 import { deleteReservation } from "../server/reservations";
@@ -15,6 +16,89 @@ const ids: string[] = [];
 after(async () => {
   await db.gameReservation.deleteMany({ where: { id: { in: ids } } });
   await db.$disconnect();
+});
+
+test("filtered and empty lists avoid redundant counts while preserving mixed-time pages", async (t) => {
+  const q = "counts-" + randomUUID();
+  const now = new Date("2030-01-01T12:00:00Z");
+  for (const [suffix, offset, status] of [
+    ["a", 1000, "OPEN"],
+    ["b", 0, "OPEN"],
+    ["c", 1000, "CANCELLED"],
+    ["d", -1000, "CANCELLED"],
+  ] as const) {
+    const id = q + suffix;
+    ids.push(id);
+    await db.gameReservation.create({
+      data: {
+        id,
+        gameName: q,
+        hostName: "Host",
+        scheduledAt: new Date(now.getTime() + offset),
+        maxPlayers: 2,
+        status,
+      },
+    });
+  }
+  let counts = 0;
+  let reads = 0;
+  const originalTransaction = db.$transaction;
+  const transaction = originalTransaction.bind(db);
+  t.after(() => {
+    db.$transaction = originalTransaction;
+  });
+  db.$transaction = ((
+    run: (tx: Prisma.TransactionClient) => Promise<unknown>,
+    options: { isolationLevel?: Prisma.TransactionIsolationLevel },
+  ) =>
+    transaction(async (tx) => {
+      const delegate = new Proxy(tx.gameReservation, {
+        get(target, key, receiver) {
+          const value = Reflect.get(target, key, receiver);
+          if (key !== "count" && key !== "findMany") return value;
+          return (...args: unknown[]) => {
+            if (key === "count") counts++;
+            else reads++;
+            return Reflect.apply(value, target, args);
+          };
+        },
+      });
+      return run(
+        new Proxy(tx, {
+          get(target, key, receiver) {
+            return key === "gameReservation"
+              ? delegate
+              : Reflect.get(target, key, receiver);
+          },
+        }),
+      );
+    }, options)) as typeof db.$transaction;
+  for (const [view, expected, expectedCounts] of [
+    ["upcoming", ["a"], 1],
+    ["started", ["b"], 1],
+    ["all", ["a", "c", "d", "b"], 2],
+    ["cancelled", ["c", "d"], 2],
+  ] as const) {
+    counts = reads = 0;
+    const listing = await listReservations({ q, view }, now);
+    assert.equal(counts, expectedCounts, view);
+    assert.deepEqual(
+      listing.items.map((row) => row.id),
+      expected.map((suffix) => q + suffix),
+    );
+    assert.equal(reads, view === "all" || view === "cancelled" ? 2 : 1);
+    counts = reads = 0;
+    const empty = await listReservations(
+      { q: q + "missing", view, page: 99 },
+      now,
+    );
+    assert.equal(counts, 1, `empty ${view}`);
+    assert.equal(reads, 0);
+    assert.deepEqual(
+      [empty.total, empty.page, empty.pageCount, empty.items.length],
+      [0, 1, 1, 0],
+    );
+  }
 });
 test("list pagination crosses the upcoming/past boundary without duplicates, exposes only summaries and clamps missing pages", async () => {
   const q = "list-" + randomUUID();

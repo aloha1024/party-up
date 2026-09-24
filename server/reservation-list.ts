@@ -49,7 +49,12 @@ export async function listReservations(
         AND: [...conditions, { scheduledAt: { gt: now } }],
       };
       const total = await tx.gameReservation.count({ where });
-      const upcoming = await tx.gameReservation.count({ where: upcomingWhere });
+      const upcoming =
+        total === 0 || filters.view === "started"
+          ? 0
+          : filters.view === "upcoming"
+            ? total
+            : await tx.gameReservation.count({ where: upcomingWhere });
       const pageCount = Math.max(1, Math.ceil(total / filters.pageSize));
       const page = Math.min(filters.page, pageCount);
       const offset = (page - 1) * filters.pageSize;
