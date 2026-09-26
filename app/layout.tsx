@@ -17,7 +17,7 @@ export default function RootLayout({
     <html lang="zh-CN">
       <body>
         <header className="border-b border-white/10">
-          <div className="mx-auto flex h-20 max-w-6xl items-center justify-between px-5 sm:px-8">
+          <div className="mx-auto flex min-h-20 max-w-6xl flex-wrap items-center justify-between gap-3 px-5 py-4 sm:px-8 sm:py-0">
             <Link href="/" className="flex items-center gap-3 font-bold">
               <span className="rounded-xl bg-lime-300 p-2 text-zinc-950">
                 <Gamepad2 size={25} />
@@ -29,12 +29,19 @@ export default function RootLayout({
                 </span>
               </span>
             </Link>
-            <Button asChild size="sm">
-              <Link href="/reservation/new">
-                <Plus />
-                创建预约
-              </Link>
-            </Button>
+            <nav aria-label="主导航" className="flex items-center gap-2">
+              <Button asChild size="sm" variant="ghost">
+                <Link href="/my-reservations" prefetch={false}>
+                  我的预约
+                </Link>
+              </Button>
+              <Button asChild size="sm">
+                <Link href="/reservation/new">
+                  <Plus />
+                  创建预约
+                </Link>
+              </Button>
+            </nav>
           </div>
         </header>
         <main className="mx-auto min-h-[calc(100vh-160px)] max-w-6xl px-5 py-10 sm:px-8 sm:py-14">

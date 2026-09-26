@@ -44,15 +44,25 @@ export function limitLogin(headers: Headers, username: string) {
   if (source) limiter.take("login:source:" + digest(source), 30);
 }
 export function limitWrite(headers: Headers, path: string, token?: string) {
-  const kind =
-    path === "/api/identity"
+  const kind = path.endsWith("/invitation/accept")
+    ? "invite"
+    : path === "/api/identity"
       ? "identity"
       : path === "/api/reservations"
         ? "create"
-        : path.includes("/participants")
+        : path.includes("/attendance") ||
+            path.includes("/participants") ||
+            path.includes("/waitlist") ||
+            path.includes("/roster-removals")
           ? "roster"
           : "manage";
-  const limits = { identity: 30, create: 10, roster: 30, manage: 60 };
+  const limits = {
+    invite: 10,
+    identity: 30,
+    create: 10,
+    roster: 30,
+    manage: 60,
+  };
   limiter.take(kind + ":global", kind === "create" ? 120 : 600);
   const source = requestSource(headers);
   if (source)

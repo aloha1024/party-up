@@ -69,7 +69,10 @@ test("create, copy share text, guest joins, capacity closes registration, and st
     try {
       const view = await stranger.newPage();
       await view.goto(url);
-      await expect(view.getByLabel("你的昵称")).toBeDisabled();
+      await expect(view.getByLabel("你的昵称")).toBeEnabled();
+      await expect(
+        view.getByRole("button", { name: "加入候补", exact: true }),
+      ).toBeVisible();
     } finally {
       await stranger.close();
     }
@@ -202,6 +205,27 @@ test("creation drafts recover after reload, and confirmed saves clear their loca
   expect(
     await page.evaluate(() => sessionStorage.getItem("party-creation")),
   ).toBeNull();
+});
+
+test("unavailable draft storage warns without preventing an explicit creation", async ({
+  page,
+}) => {
+  await page.addInitScript(() => {
+    const set = Storage.prototype.setItem;
+    Storage.prototype.setItem = function (key, value) {
+      if (this === sessionStorage)
+        throw new DOMException("Blocked", "SecurityError");
+      return set.call(this, key, value);
+    };
+  });
+  await page.goto("/reservation/new");
+  await fill(page, "No-storage-" + randomUUID());
+  await expect(
+    page.getByText("浏览器未能保存草稿，刷新或离开前请复制需要保留的内容。"),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "创建预约，召集队友" }).click();
+  await expect(page).toHaveURL(/\/reservation\/(?!new$)[a-z0-9-]+$/);
+  await expect(page.getByText("你已在接龙名单中")).toBeVisible();
 });
 test("a lost creation response can be looked up without submitting expired form values", async ({
   page,

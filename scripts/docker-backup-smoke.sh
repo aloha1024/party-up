@@ -39,6 +39,13 @@ const db=new PrismaClient();
 try {
   const root=await db.adminCredential.findUniqueOrThrow({where:{id:1}});
   await db.adminCredential.create({data:{username:'ci-backup-admin',passwordHash:root.passwordHash,mustChangePassword:false}});
+  const reservation=await db.gameReservation.findFirstOrThrow();
+  await db.waitlistEntry.create({data:{reservationId:reservation.id,name:'Backup waiter',nameKey:'backup waiter',tokenHash:'ci-backup-waiter'}});
+  await db.reservationChange.create({data:{reservationId:reservation.id,action:'EDIT',actorRole:'HOST',fields:'["maxPlayers"]',maxPlayersBefore:2,maxPlayersAfter:3}});
+  await db.participant.updateMany({where:{reservationId:reservation.id},data:{checkedInAt:new Date(),attendanceVersion:1}});
+  await db.gameReservation.update({where:{id:reservation.id},data:{status:'ENDED',endedAt:new Date()}});
+  await db.reservationAccess.create({data:{reservationId:reservation.id,tokenHash:'ci-invite-member',inviteVersion:1,hasJoined:true}});
+  await db.rosterRemoval.create({data:{reservationId:reservation.id,kind:'participants',entryId:'removed-fixture',targetName:'Removed fixture',targetTokenHash:'removed-fixture-hash',reason:'Fixture reason',actorRole:'HOST'}});
 } finally {await db.$disconnect();}
 JS
 capture_state() {
@@ -47,7 +54,7 @@ import {PrismaClient} from '@prisma/client';
 import {readFileSync} from 'node:fs';
 const db=new PrismaClient();
 try {
-  const reservations=await db.gameReservation.findMany({orderBy:{id:'asc'},include:{participants:{orderBy:{id:'asc'}}}});
+  const reservations=await db.gameReservation.findMany({orderBy:{id:'asc'},include:{participants:{orderBy:{id:'asc'}},waitlist:{orderBy:{id:'asc'}},changes:{orderBy:{id:'asc'}},removals:{orderBy:{id:'asc'}},access:{orderBy:{id:'asc'}}}});
   const admins=await db.adminCredential.findMany({orderBy:{id:'asc'}});
   const requests=await db.creationRequest.findMany({orderBy:{id:'asc'}});
   const bootstrap=JSON.parse(readFileSync('/app/data/admin-bootstrap.json','utf8'));
@@ -72,8 +79,13 @@ import {readFileSync,writeFileSync} from 'node:fs';
 const db=new PrismaClient();
 try {
   const reservation=await db.gameReservation.findFirstOrThrow();
-  await db.gameReservation.update({where:{id:reservation.id},data:{gameName:'Changed after backup',description:'Restore should remove this'}});
+  await db.gameReservation.update({where:{id:reservation.id},data:{gameName:'Changed after backup',description:'Restore should remove this',status:'OPEN',endedAt:null}});
+  await db.participant.updateMany({where:{reservationId:reservation.id},data:{checkedInAt:null,attendanceVersion:{increment:1}}});
   await db.participant.create({data:{reservationId:reservation.id,name:'Added after backup',nameKey:'added after backup',tokenHash:randomBytes(32).toString('hex')}});
+  await db.waitlistEntry.deleteMany({where:{reservationId:reservation.id}});
+  await db.reservationChange.deleteMany({where:{reservationId:reservation.id}});
+  await db.rosterRemoval.deleteMany({where:{reservationId:reservation.id}});
+  await db.reservationAccess.deleteMany({where:{reservationId:reservation.id}});
   const salt=randomBytes(16).toString('hex');
   const passwordHash='scrypt:'+salt+':'+scryptSync(randomBytes(32),salt,64).toString('hex');
   await db.adminCredential.update({where:{username:'ci-backup-admin'},data:{passwordHash,isActive:false,sessionVersion:{increment:1}}});
@@ -94,7 +106,7 @@ before=json.loads((root/'before.json').read_text())
 changed=json.loads((root/'changed.json').read_text())
 restored=json.loads((root/'restored.json').read_text())
 assert before!=changed,'Mutation must change data before restore'
-assert before==restored,'Restoration must preserve reservations, participants, admin credentials and creation identities'
+assert before==restored,'Restoration must preserve reservations, participants, waitlist, admin credentials and creation identities'
 assert (root/'deployment/.env').read_bytes()==(root/'env').read_bytes(),'Server environment must be restored'
 assert list((root/'backups').glob('pre-restore-*')),'Recovery snapshot must exist'
 PYCODE

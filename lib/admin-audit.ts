@@ -1,6 +1,10 @@
 import { z } from "zod";
 export const auditActions = [
   "RESERVATION_EDIT",
+  "RESERVATION_END",
+  "RESERVATION_REOPEN",
+  "RESERVATION_INVITE_ROTATE",
+  "RESERVATION_ROSTER_REMOVE",
   "RESERVATION_CANCEL",
   "RESERVATION_TRASH",
   "RESERVATION_RESTORE",
@@ -14,7 +18,11 @@ export const auditActions = [
 ] as const;
 export type AuditAction = (typeof auditActions)[number];
 export const auditLabels: Record<AuditAction, string> = {
+  RESERVATION_INVITE_ROTATE: "更换邀请链接",
+  RESERVATION_END: "结束预约",
+  RESERVATION_REOPEN: "撤销结束",
   RESERVATION_EDIT: "编辑预约",
+  RESERVATION_ROSTER_REMOVE: "移除报名或候补",
   RESERVATION_CANCEL: "取消预约",
   RESERVATION_TRASH: "移入回收站",
   RESERVATION_RESTORE: "恢复预约",

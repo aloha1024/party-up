@@ -1,4 +1,5 @@
-import { ReservationList } from "@/components/reservations";
+import { randomUUID } from "node:crypto";
+import { ReservationList } from "@/components/reservation-list";
 import { InvalidReservationFilters } from "@/components/invalid-reservation-filters";
 import { listReservations } from "@/server/reservation-list";
 import {
@@ -13,5 +14,10 @@ export default async function Home({
 }) {
   const parsed = reservationListSchema.safeParse(await searchParams);
   if (!parsed.success) return <InvalidReservationFilters />;
-  return <ReservationList listing={await listReservations(parsed.data)} />;
+  return (
+    <ReservationList
+      listing={await listReservations(parsed.data)}
+      refreshSample={randomUUID()}
+    />
+  );
 }

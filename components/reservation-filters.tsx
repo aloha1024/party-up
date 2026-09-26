@@ -4,15 +4,21 @@ import { useRouter } from "next/navigation";
 import { useTransition } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { reservationListUrl } from "@/lib/reservation-list";
+import {
+  reservationListUrl,
+  type ReservationListPath,
+  type MyReservationTab,
+} from "@/lib/reservation-list";
 import type { ReservationPage } from "@/types/reservation";
 
 export function ReservationFilters({
   listing,
   path = "/",
+  tab,
 }: {
   listing: ReservationPage;
-  path?: "/" | "/admin";
+  path?: ReservationListPath;
+  tab?: MyReservationTab;
 }) {
   const router = useRouter();
   const [pending, start] = useTransition();
@@ -20,6 +26,7 @@ export function ReservationFilters({
   return (
     <form
       key={JSON.stringify([
+        tab,
         filters.q,
         filters.view,
         filters.date,
@@ -34,6 +41,7 @@ export function ReservationFilters({
         event.preventDefault();
         const form = new FormData(event.currentTarget);
         const query = new URLSearchParams();
+        if (tab) query.set("tab", tab);
         for (const name of ["q", "view", "date"]) {
           const value = String(form.get(name) || "").trim();
           if (value && value !== "all") query.set(name, value);
@@ -62,7 +70,9 @@ export function ReservationFilters({
         <select name="view" className="field" defaultValue={filters.view}>
           <option value="all">全部预约</option>
           <option value="upcoming">未开始（含满员）</option>
-          <option value="started">已开始</option>
+          <option value="available">有空位（未开始）</option>
+          <option value="started">已开始（未结束）</option>
+          <option value="ended">已结束</option>
           <option value="cancelled">已取消</option>
         </select>
       </label>
@@ -72,9 +82,10 @@ export function ReservationFilters({
       </label>
       <div className="flex items-end gap-2">
         <input type="hidden" name="pageSize" value={filters.pageSize} />
+        {tab && <input type="hidden" name="tab" value={tab} />}
         <Button disabled={pending}>{pending ? "筛选中…" : "筛选"}</Button>
         <Button asChild variant="outline">
-          <Link href={path}>重置</Link>
+          <Link href={tab ? `${path}?tab=${tab}` : path}>重置</Link>
         </Button>
       </div>
     </form>
@@ -83,9 +94,11 @@ export function ReservationFilters({
 export function ReservationPagination({
   listing,
   path = "/",
+  tab,
 }: {
   listing: ReservationPage;
-  path?: "/" | "/admin";
+  path?: ReservationListPath;
+  tab?: MyReservationTab;
 }) {
   const { page, pageCount, total, pageSize, filters } = listing;
   return (
@@ -103,7 +116,7 @@ export function ReservationPagination({
           <Button asChild variant="outline">
             <Link
               prefetch={false}
-              href={reservationListUrl(path, filters, page - 1)}
+              href={reservationListUrl(path, filters, page - 1, tab)}
             >
               上一页
             </Link>
@@ -120,7 +133,7 @@ export function ReservationPagination({
           <Button asChild variant="outline">
             <Link
               prefetch={false}
-              href={reservationListUrl(path, filters, page + 1)}
+              href={reservationListUrl(path, filters, page + 1, tab)}
             >
               下一页
             </Link>

@@ -13,15 +13,18 @@ const r: Reservation = {
   maxPlayers: 2,
   description: "排位\n自带语音",
   status: "OPEN",
+  waitlist: [],
   participants: [
     {
       id: "internal-alex",
+      isHost: true,
       name: "Alex#123",
       joinedAt: "2029-01-01T00:00:00Z",
       isMe: false,
     },
     {
       id: "internal-mike",
+      isHost: false,
       name: "Mike",
       joinedAt: "2029-01-02T00:00:00Z",
       isMe: true,
@@ -57,4 +60,29 @@ test("share text handles empty notes and roster and recalculates started status"
   );
   for (const value of ["备注：无", "暂无报名", "0 / 2 人", "已开始"])
     assert.ok(text.includes(value));
+});
+
+test("share distinguishes waiting people from formal participants", () => {
+  const text = reservationShareText(
+    {
+      ...r,
+      waitlist: [
+        {
+          id: 7,
+          name: "候补队友",
+          joinedAt: r.scheduledAt,
+          isMe: true,
+          isHost: false,
+        },
+      ],
+    },
+    "https://example.test/r",
+  );
+  assert.ok(text.includes("已接龙人数：2 / 2 人"));
+  assert.ok(text.includes("候补名单（1 人，候补不是正式报名）：\n1. 候补队友"));
+  assert.equal(text.includes("isMe"), false);
+  assert.equal(
+    reservationShareText(r, "https://example.test/r").includes("候补名单"),
+    false,
+  );
 });

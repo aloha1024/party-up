@@ -30,6 +30,13 @@ export function reservationShareText(
     ...(r.participants.length
       ? r.participants.map((p, i) => i + 1 + ". " + p.name)
       : ["暂无报名"]),
+    ...(r.waitlist.length
+      ? [
+          "",
+          `候补名单（${r.waitlist.length} 人，候补不是正式报名）：`,
+          ...r.waitlist.map((p, i) => `${i + 1}. ${p.name}`),
+        ]
+      : []),
     "",
     "接龙链接：" + url,
     "人数与名单以链接页面的最新信息为准。",

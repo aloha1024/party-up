@@ -19,7 +19,7 @@ export const reservationListSchema = z.object({
     .pipe(z.string().max(80, "搜索内容最多 80 字"))
     .default(""),
   view: z
-    .enum(["all", "upcoming", "started", "cancelled"], {
+    .enum(["all", "upcoming", "available", "started", "cancelled", "ended"], {
       error: "预约状态筛选无效",
     })
     .default("all"),
@@ -28,6 +28,11 @@ export const reservationListSchema = z.object({
   pageSize: integerInput.pipe(z.number().int().min(1).max(48)).default(12),
 });
 export type ReservationFilters = z.infer<typeof reservationListSchema>;
+export const myReservationListSchema = reservationListSchema.extend({
+  tab: z.enum(["joined", "hosted", "waiting"]).default("joined"),
+});
+export type MyReservationTab = z.infer<typeof myReservationListSchema>["tab"];
+export type ReservationListPath = "/" | "/admin" | "/my-reservations";
 export type PageSearchParams = Record<string, string | string[] | undefined>;
 export function listSearchParams(params: URLSearchParams): PageSearchParams {
   const result: PageSearchParams = {};
@@ -38,11 +43,13 @@ export function listSearchParams(params: URLSearchParams): PageSearchParams {
   return result;
 }
 export function reservationListUrl(
-  path: "/" | "/admin",
+  path: ReservationListPath,
   filters: ReservationFilters,
   page = filters.page,
+  tab?: MyReservationTab,
 ) {
   const query = new URLSearchParams();
+  if (path === "/my-reservations" && tab) query.set("tab", tab);
   if (filters.q) query.set("q", filters.q);
   if (filters.view !== "all") query.set("view", filters.view);
   if (filters.date) query.set("date", filters.date);

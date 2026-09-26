@@ -5,7 +5,10 @@ import { currentAdmin } from "@/server/admin";
 export const GET = (
   req: NextRequest,
   context: { params: Promise<{ id: string }> },
-) => respond(req, async (token) => detail((await context.params).id, token));
+) =>
+  respond(req, async (token) =>
+    detail((await context.params).id, token, !!(await currentAdmin())),
+  );
 export const PATCH = (
   req: NextRequest,
   context: { params: Promise<{ id: string }> },

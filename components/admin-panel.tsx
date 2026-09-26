@@ -22,6 +22,7 @@ export function AdminPanel({
   view = "reservations",
   canCreateAdmins = false,
   children,
+  refreshSample = "",
 }: {
   authenticated: boolean;
   reservations: ReservationSummary[];
@@ -29,10 +30,18 @@ export function AdminPanel({
   view?: "reservations" | "password" | "accounts" | "trash" | "audit";
   canCreateAdmins?: boolean;
   children?: ReactNode;
+  refreshSample?: string;
 }) {
   const router = useRouter();
   const [pending, start] = useTransition();
-  useReservationRefresh(authenticated && view === "reservations", pending);
+  useReservationRefresh({
+    sample: refreshSample,
+    data: { listing, canCreateAdmins, authenticated },
+    scope: JSON.stringify(listing?.filters),
+    scheduledAt: reservations.map((r) => r.scheduledAt),
+    enabled: authenticated && view === "reservations",
+    paused: pending,
+  });
   const [error, setError] = useState("");
   const [firstLogin, setFirstLogin] = useState(false);
   const [username, setUsername] = useState("admin");
@@ -300,7 +309,12 @@ export function AdminPanel({
           ) : (
             <>
               {listing && (
-                <ReservationFilters listing={listing} path="/admin" />
+                <>
+                  <ReservationFilters listing={listing} path="/admin" />
+                  {listing.filters.view === "available" && (
+                    <p className="text-xs text-zinc-500">空位以提交时为准</p>
+                  )}
+                </>
               )}
               <p className="text-sm text-zinc-400">
                 共 {listing?.total ?? reservations.length}{" "}
@@ -317,14 +331,25 @@ export function AdminPanel({
                       href={`/reservation/${r.id}`}
                     >
                       {r.gameName}
+                      {r.visibility === "INVITE" && (
+                        <span className="ml-2 text-xs text-amber-300">
+                          邀请制
+                        </span>
+                      )}
                     </Link>
                     <p className="mt-2 text-sm text-zinc-400">
                       {formatTime(r.scheduledAt)} · {r.hostName} ·{" "}
                       {r.participantCount}/{r.maxPlayers} 人
+                      {r.status === "OPEN" && (
+                        <span className="ml-3 text-lime-300">
+                          还可报名{" "}
+                          {Math.max(0, r.maxPlayers - r.participantCount)} 人
+                        </span>
+                      )}
                     </p>
                   </div>
                   <div className="flex gap-2">
-                    {!["STARTED", "CANCELLED"].includes(r.status) && (
+                    {!["STARTED", "CANCELLED", "ENDED"].includes(r.status) && (
                       <Button asChild variant="outline">
                         <Link href={`/reservation/${r.id}/edit`}>编辑预约</Link>
                       </Button>

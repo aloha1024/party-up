@@ -1,7 +1,8 @@
 import { z } from "zod";
-import { creationInputSchema } from "./validation";
+import { creationInputSchema, creationFingerprint } from "./validation";
 
 const fieldsSchema = z.object({
+  visibility: z.enum(["PUBLIC", "INVITE"]).optional(),
   gameName: z.string().max(80),
   date: z.string().max(32),
   time: z.string().max(32),
@@ -66,6 +67,7 @@ export function draftMatchesVersion(
 export function creationInputFromFields(fields: ReservationFields) {
   const date = new Date(`${fields.date}T${fields.time}:00+08:00`);
   return {
+    visibility: fields.visibility ?? "PUBLIC",
     gameName: fields.gameName,
     hostName: fields.hostName,
     scheduledAt: isNaN(date.getTime()) ? "" : date.toISOString(),
@@ -79,5 +81,14 @@ export function draftMatchesSubmission(
 ) {
   // A lookup can confirm an old submission after its start time; no future-time validation here.
   const parsed = creationInputSchema.safeParse(creationInputFromFields(fields));
-  return parsed.success && JSON.stringify(parsed.data) === payload;
+  try {
+    const stored = creationInputSchema.safeParse(JSON.parse(payload));
+    return (
+      parsed.success &&
+      stored.success &&
+      creationFingerprint(parsed.data) === creationFingerprint(stored.data)
+    );
+  } catch {
+    return false;
+  }
 }

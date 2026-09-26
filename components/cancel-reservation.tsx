@@ -1,15 +1,25 @@
 "use client";
 import { ensureBrowserIdentity } from "@/lib/browser-identity";
 import { request } from "@/lib/client-request";
-import { useState, useTransition, type FormEvent } from "react";
+import { useEffect, useState, useTransition, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-export function CancelReservation({ id }: { id: string }) {
+export function CancelReservation({
+  id,
+  onPendingChange,
+}: {
+  id: string;
+  onPendingChange?: (pending: boolean) => void;
+}) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [pending, start] = useTransition();
   const [error, setError] = useState("");
+  useEffect(() => {
+    onPendingChange?.(pending);
+  }, [pending, onPendingChange]);
+  useEffect(() => () => onPendingChange?.(false), [onPendingChange]);
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const reason = new FormData(event.currentTarget).get("reason");

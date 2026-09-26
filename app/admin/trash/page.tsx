@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { currentAdmin, canCreateAdministrators } from "@/server/admin";
@@ -25,6 +26,7 @@ export default async function Page({
       {parsed.success ? (
         <ReservationTrash
           listing={await listDeletedReservations(parsed.data)}
+          refreshSample={randomUUID()}
         />
       ) : (
         <div className="panel space-y-4 p-6">

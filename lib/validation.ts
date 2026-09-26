@@ -6,6 +6,7 @@ export const nickname = text(24)
   .pipe(text(24));
 export const joinSchema = z.object({ name: nickname });
 export const creationInputSchema = z.object({
+  visibility: z.enum(["PUBLIC", "INVITE"]).default("PUBLIC"),
   gameName: text(80),
   hostName: nickname,
   scheduledAt: z.string().datetime({ offset: true, message: "请选择有效时间" }),
@@ -24,10 +25,19 @@ export const createSchema = creationInputSchema.extend({
   ),
 });
 
-export const editSchema = createSchema.extend({
+export const editSchema = createSchema.omit({ visibility: true }).extend({
+  visibility: z.never().optional(),
   editVersion: z
     .number({ error: "缺少有效的预约版本，请刷新编辑页面" })
     .int("预约版本无效，请刷新编辑页面")
     .min(0, "预约版本无效，请刷新编辑页面")
     .max(Number.MAX_SAFE_INTEGER, "预约版本无效，请刷新编辑页面"),
 });
+
+// Preserve the pre-invitation public submission fingerprint, including key order.
+export function creationFingerprint(data: z.infer<typeof creationInputSchema>) {
+  const { visibility, ...legacy } = data;
+  return JSON.stringify(
+    visibility === "INVITE" ? { ...legacy, visibility } : legacy,
+  );
+}

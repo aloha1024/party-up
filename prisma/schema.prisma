@@ -8,29 +8,87 @@ datasource db {
 }
 
 model GameReservation {
-  id                 String        @id @default(cuid())
+  id                 String              @id @default(cuid())
   gameName           String
   hostName           String
   hostTokenHash      String?
   scheduledAt        DateTime
   maxPlayers         Int
-  description        String        @default("")
-  status             String        @default("OPEN")
+  description        String              @default("")
+  status             String              @default("OPEN")
+  endedAt            DateTime?
   deletedAt          DateTime?
-  cancellationReason String        @default("")
-  revision           Int           @default(0)
-  editVersion        Int           @default(0)
-  createdAt          DateTime      @default(now())
-  updatedAt          DateTime      @updatedAt
+  cancellationReason String              @default("")
+  revision           Int                 @default(0)
+  editVersion        Int                 @default(0)
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
   participants       Participant[]
+  waitlist           WaitlistEntry[]
+  changes            ReservationChange[]
+  removals           RosterRemoval[]
+  visibility         String              @default("PUBLIC")
+  inviteVersion      Int                 @default(1)
+  inviteHash         String?
+  inviteCipher       String?
+  access             ReservationAccess[]
 
   @@index([scheduledAt])
   @@index([deletedAt, scheduledAt, id])
   @@index([deletedAt(sort: Desc), id])
 }
 
+model RosterRemoval {
+  id              Int             @id @default(autoincrement())
+  reservationId   String
+  kind            String
+  entryId         String
+  targetTokenHash String
+  targetName      String
+  reason          String
+  actorRole       String
+  createdAt       DateTime        @default(now())
+  reservation     GameReservation @relation(fields: [reservationId], references: [id], onDelete: Cascade)
+
+  @@unique([reservationId, kind, entryId])
+  @@index([reservationId, id])
+  @@index([reservationId, targetTokenHash, id])
+}
+
+model ReservationChange {
+  id                Int             @id @default(autoincrement())
+  reservationId     String
+  action            String
+  actorRole         String
+  fields            String
+  scheduledAtBefore DateTime?
+  scheduledAtAfter  DateTime?
+  maxPlayersBefore  Int?
+  maxPlayersAfter   Int?
+  createdAt         DateTime        @default(now())
+  reservation       GameReservation @relation(fields: [reservationId], references: [id], onDelete: Cascade)
+
+  @@index([reservationId, id])
+}
+
 model Participant {
-  id            String          @id @default(cuid())
+  id                String          @id @default(cuid())
+  reservationId     String
+  name              String
+  nameKey           String
+  tokenHash         String
+  checkedInAt       DateTime?
+  attendanceVersion Int             @default(0)
+  joinedAt          DateTime        @default(now())
+  reservation       GameReservation @relation(fields: [reservationId], references: [id], onDelete: Cascade)
+
+  @@unique([reservationId, nameKey])
+  @@unique([reservationId, tokenHash])
+  @@index([reservationId, joinedAt])
+}
+
+model WaitlistEntry {
+  id            Int             @id @default(autoincrement())
   reservationId String
   name          String
   nameKey       String
@@ -40,7 +98,7 @@ model Participant {
 
   @@unique([reservationId, nameKey])
   @@unique([reservationId, tokenHash])
-  @@index([reservationId, joinedAt])
+  @@index([reservationId, id])
 }
 
 model AdminCredential {
@@ -81,4 +139,15 @@ model CreationRequest {
   createdAt      DateTime @default(now())
 
   @@unique([ownerTokenHash, key])
+}
+
+model ReservationAccess {
+  id            Int             @id @default(autoincrement())
+  reservationId String
+  tokenHash     String
+  inviteVersion Int
+  hasJoined     Boolean         @default(false)
+  reservation   GameReservation @relation(fields: [reservationId], references: [id], onDelete: Cascade)
+
+  @@unique([reservationId, tokenHash])
 }

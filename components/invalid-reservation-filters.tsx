@@ -2,7 +2,7 @@ import Link from "next/link";
 export function InvalidReservationFilters({
   path = "/",
 }: {
-  path?: "/" | "/admin";
+  path?: "/" | "/admin" | "/my-reservations";
 }) {
   return (
     <div className="panel space-y-4 p-6">

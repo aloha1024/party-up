@@ -4,8 +4,11 @@ import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import type { Prisma } from "@prisma/client";
 import { db } from "../server/db";
-import { listReservations } from "../server/reservation-list";
-import { deleteReservation } from "../server/reservations";
+import {
+  listReservations,
+  listMyReservations,
+} from "../server/reservation-list";
+import { deleteReservation, hashToken } from "../server/reservations";
 import {
   reservationListSchema,
   reservationListUrl,
@@ -73,6 +76,11 @@ test("filtered and empty lists avoid redundant counts while preserving mixed-tim
         }),
       );
     }, options)) as typeof db.$transaction;
+  const owner = "a".repeat(64);
+  await db.gameReservation.updateMany({
+    where: { gameName: q },
+    data: { hostTokenHash: hashToken(owner) },
+  });
   for (const [view, expected, expectedCounts] of [
     ["upcoming", ["a"], 1],
     ["started", ["b"], 1],
@@ -98,6 +106,26 @@ test("filtered and empty lists avoid redundant counts while preserving mixed-tim
       [empty.total, empty.page, empty.pageCount, empty.items.length],
       [0, 1, 1, 0],
     );
+    counts = 0;
+    const personal = await listMyReservations(
+      { q, view, tab: "hosted" },
+      owner,
+      now,
+    );
+    assert.equal(counts, expectedCounts, `personal ${view}`);
+    assert.deepEqual(
+      personal.items.map((row) => row.id),
+      expected.map((suffix) => q + suffix),
+    );
+    counts = 0;
+    reads = 0;
+    await listMyReservations(
+      { q: q + "missing", view, tab: "hosted" },
+      owner,
+      now,
+    );
+    assert.equal(counts, 1);
+    assert.equal(reads, 0);
   }
 });
 test("list pagination crosses the upcoming/past boundary without duplicates, exposes only summaries and clamps missing pages", async () => {
@@ -156,6 +184,7 @@ test("list pagination crosses the upcoming/past boundary without duplicates, exp
     "participantCount",
     "scheduledAt",
     "status",
+    "visibility",
   ]);
   await deleteReservation(q + "e", actor);
   const clamped = await listReservations({ q, page: 99, pageSize: 2 }, now);

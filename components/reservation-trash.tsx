@@ -16,11 +16,22 @@ const deletionDate = new Intl.DateTimeFormat("zh-CN", {
   minute: "2-digit",
   hourCycle: "h23",
 });
-export function ReservationTrash({ listing }: { listing: TrashPage }) {
+export function ReservationTrash({
+  listing,
+  refreshSample,
+}: {
+  listing: TrashPage;
+  refreshSample: string;
+}) {
   const router = useRouter();
   const [pending, start] = useTransition();
   const [error, setError] = useState("");
-  useReservationRefresh(true, pending);
+  useReservationRefresh({
+    sample: refreshSample,
+    data: listing,
+    scope: JSON.stringify(listing.filters),
+    paused: pending,
+  });
   function action(item: TrashItem, method: "POST" | "DELETE") {
     if (
       method === "DELETE" &&

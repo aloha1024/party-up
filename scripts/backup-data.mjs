@@ -71,7 +71,7 @@ function validateDatabase(directory) {
           .get(table)
       )
         throw new Error("备份缺少应用数据表");
-    return db
+    const migrations = db
       .prepare(
         `
       SELECT migration_name AS name, checksum,
@@ -82,6 +82,58 @@ function validateDatabase(directory) {
     `,
       )
       .all();
+    if (
+      migrations.some((row) => row.name === "20260926000100_waitlist") &&
+      !db
+        .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name=?")
+        .get("WaitlistEntry")
+    )
+      throw new Error("备份缺少候补数据表");
+    if (
+      migrations.some(
+        (row) => row.name === "20260926000200_reservation_history",
+      ) &&
+      !db
+        .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name=?")
+        .get("ReservationChange")
+    )
+      throw new Error("备份缺少预约变更记录表");
+    if (
+      migrations.some(
+        (row) => row.name === "20260926000300_roster_management",
+      ) &&
+      !db
+        .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name=?")
+        .get("RosterRemoval")
+    )
+      throw new Error("备份缺少报名移除记录表");
+    if (
+      migrations.some((row) => row.name === "20260926000400_invitations") &&
+      !db
+        .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name=?")
+        .get("ReservationAccess")
+    )
+      throw new Error("备份缺少邀请授权表");
+    if (
+      migrations.some(
+        (row) => row.name === "20260926000500_attendance_completion",
+      )
+    ) {
+      for (const [table, fields] of [
+        ["GameReservation", ["endedAt"]],
+        ["Participant", ["checkedInAt", "attendanceVersion"]],
+      ]) {
+        const columns = new Set(
+          db
+            .prepare(`PRAGMA table_info("${table}")`)
+            .all()
+            .map((row) => row.name),
+        );
+        if (fields.some((field) => !columns.has(field)))
+          throw new Error("备份缺少到场或结束状态字段");
+      }
+    }
+    return migrations;
   } finally {
     db.close();
   }
