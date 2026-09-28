@@ -1,8 +1,8 @@
 import { test, expect, type Page } from "@playwright/test";
 import { randomUUID } from "node:crypto";
 
-async function clock(page: Page) {
-  const now = new Date();
+async function clock(page: Page, offset = 0) {
+  const now = new Date(Date.now() + offset);
   await page.clock.install({ time: now });
   await page.addInitScript(() => {
     const schedule = window.setTimeout.bind(window);
@@ -33,12 +33,18 @@ async function waitForInterval(page: Page, min: number, max: number) {
     .toBe(true);
 }
 
-for (const path of ["/", "/my-reservations"]) {
-  test(`idle ${path} reduces actual refresh requests and resets after returning to the tab`, async ({
+for (const [path, extra] of [
+  ["/", ""],
+  ["/my-reservations", ""],
+  ["/my-reservations", "&layout=schedule"],
+]) {
+  test(`idle ${path}${extra} reduces actual refresh requests and resets after returning to the tab`, async ({
     page,
   }) => {
-    const now = await clock(page);
-    await page.goto(path + "?q=" + randomUUID());
+    // Keep this cadence test away from the server's next midnight boundary.
+    // Boundary wakeups are covered separately with an injected clock.
+    const now = await clock(page, extra ? -120000 : 0);
+    await page.goto(path + "?q=" + randomUUID() + extra);
     await expect(
       page.getByText(
         path === "/" ? "没有符合条件的预约" : "暂无当前浏览器的预约记录",
@@ -71,7 +77,7 @@ for (const path of ["/", "/my-reservations"]) {
     await waitForInterval(page, 13500, 15000);
     // A changed scope must also reset to the base cadence.
     await page.clock.resume();
-    await page.goto(path + "?q=" + randomUUID());
+    await page.goto(path + "?q=" + randomUUID() + extra);
     await waitForInterval(page, 13500, 15000);
   });
 }
