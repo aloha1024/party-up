@@ -83,9 +83,10 @@ case "$url" in
     echo '{"status":"ok"}' ;;
   */api/identity)
     [[ " $* " == *" Origin: $expected "* ]] || exit 99
-    echo '{"data":{"ready":true}}' ;;
+    echo '{"data":{"ready":true,"scope":"docker-smoke-guest-scope"}}' ;;
   */api/reservations)
     [[ " $* " == *" Origin: $expected "* ]] || exit 99
+    [[ " $* " == *' X-Identity-Scope: docker-smoke-guest-scope '* ]] || exit 99
     if [[ -f "$MOCK_STATE/restarted" ]]; then touch "$MOCK_STATE/replayed"; fi
     echo '{"data":{"id":"same-reservation","isHost":true,"participants":[{"id":"host"}]}}' ;;
   *) exit 99 ;;
