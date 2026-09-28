@@ -36,7 +36,6 @@ jobs:
             test-results/
           retention-days: 7
   docker:
-    needs: test
     runs-on: ubuntu-latest
     timeout-minutes: 35
     steps:

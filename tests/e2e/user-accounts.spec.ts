@@ -159,6 +159,8 @@ test("logout clears private content in another tab and account drafts do not bec
   await expect(
     privateTab.getByRole("heading", { name: r.gameName }),
   ).toHaveCount(0);
+  // The cross-tab notification can arrive before logout finishes navigating.
+  await expect(page).toHaveURL(new URL("/", process.env.TEST_BASE_URL!).href);
   await page.goto("/reservation/new");
   await expect(page.getByLabel("游戏名称", { exact: true })).toHaveValue("");
   await privateTab.close();

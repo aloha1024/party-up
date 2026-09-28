@@ -448,7 +448,7 @@ docker compose logs --no-color --no-log-prefix --tail=1000 web | grep -F '实际
 
 ## 自动检查与容器运行
 
-`.github/workflows/ci.yml` 在推送 main、Pull Request 和手动运行时使用 Linux 执行类型检查、业务／接口测试、Chromium 桌面和手机视口、WebKit/iPhone，以及普通 HTTP 下的首次多标签页身份测试。Docker 任务在上述检查成功后构建一次候选镜像，并验证该镜像的迁移、健康检查、重启后的身份和提交去重，以及真实备份→修改→恢复演练；失败时保留浏览器报告 7 天。测试凭据临时生成，报告不应包含实际用户数据。
+`.github/workflows/ci.yml` 在推送 main、Pull Request 和手动运行时使用 Linux 执行类型检查、业务／接口测试、Chromium 桌面和手机视口、WebKit/iPhone，以及普通 HTTP 下的首次多标签页身份测试。Docker 任务与这些检查并行，构建一次候选镜像，并验证该镜像的迁移、健康检查、重启后的身份和提交去重，以及真实备份→修改→恢复演练；正式镜像发布仍须两项任务全部通过，手动运行和非 main 分支不发布镜像。失败时保留浏览器报告 7 天。测试凭据临时生成，报告不应包含实际用户数据。
 
 本地有 Docker 时可执行 `bash scripts/docker-smoke.sh`，它创建独立的随机 Compose 项目、临时端口与数据卷，并在退出时删除自己的测试资源。不要把测试脚本用作部署命令。浏览器测试遵循 [Playwright 的 CI 安装流程](https://playwright.dev/docs/ci-intro)。
 
