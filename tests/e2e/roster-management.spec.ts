@@ -10,6 +10,7 @@ import {
   hashToken,
 } from "../../server/reservations";
 import { ADMIN_COOKIE, createAdminSession } from "../../server/admin-auth";
+import { ensureAdminRecord } from "../../server/admin";
 const token = () => randomBytes(32).toString("hex");
 const input = () => ({
   gameName: "报名管理" + token().slice(0, 6),
@@ -158,9 +159,7 @@ test("private pages catch refresh gaps and revoked admin access clears previousl
     adminId = 1000002;
   const r = await createReservation(input(), owner);
   try {
-    const root = await db.adminCredential.findUniqueOrThrow({
-      where: { id: 1 },
-    });
+    const root = await ensureAdminRecord();
     await db.adminCredential.create({
       data: {
         id: adminId,

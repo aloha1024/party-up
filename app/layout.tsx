@@ -4,7 +4,7 @@ import { Gamepad2, Plus } from "lucide-react";
 import { Toaster } from "sonner";
 import { Button } from "@/components/ui/button";
 import "./globals.css";
-import { currentViewer } from "@/server/http";
+import { currentPageViewer } from "@/server/page-identity";
 import { publicViewer } from "@/server/user-identity";
 import {
   IdentityProvider,
@@ -19,7 +19,7 @@ export default async function RootLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const viewer = publicViewer(await currentViewer());
+  const viewer = publicViewer(await currentPageViewer());
   return (
     <html lang="zh-CN">
       <body>

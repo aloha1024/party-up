@@ -1,4 +1,4 @@
-import type { Prisma } from "@prisma/client";
+import type { Prisma, ReservationAccess } from "@prisma/client";
 import { z } from "zod";
 import { db } from "./db";
 import { AppError } from "./errors";
@@ -11,6 +11,20 @@ import {
   type Viewer,
 } from "./user-identity";
 
+function guestReservations(
+  guestHash: string,
+): Prisma.GameReservationWhereInput {
+  return {
+    OR: [
+      { hostTokenHash: guestHash },
+      { participants: { some: { tokenHash: guestHash } } },
+      { waitlist: { some: { tokenHash: guestHash } } },
+      { access: { some: { tokenHash: guestHash } } },
+      { removals: { some: { targetTokenHash: guestHash } } },
+    ],
+  };
+}
+
 async function snapshot(
   tx: Prisma.TransactionClient,
   guestHash: string,
@@ -19,15 +33,7 @@ async function snapshot(
   const [guest, reservations, submissions] = await Promise.all([
     tx.guestIdentity.findUnique({ where: { hash: guestHash } }),
     tx.gameReservation.findMany({
-      where: {
-        OR: [
-          { hostTokenHash: guestHash },
-          { participants: { some: { tokenHash: guestHash } } },
-          { waitlist: { some: { tokenHash: guestHash } } },
-          { access: { some: { tokenHash: guestHash } } },
-          { removals: { some: { targetTokenHash: guestHash } } },
-        ],
-      },
+      where: guestReservations(guestHash),
       orderBy: { id: "asc" },
       include: {
         participants: { orderBy: { id: "asc" } },
@@ -45,7 +51,18 @@ async function snapshot(
     }),
   ]);
   const source = submissions.filter((s) => s.ownerTokenHash === guestHash);
-  const dest = submissions.filter((s) => s.ownerTokenHash === userHash);
+  const destinationKeys = new Set(
+    submissions.filter((s) => s.ownerTokenHash === userHash).map((s) => s.key),
+  );
+  const conflictingIds = new Set(
+    source
+      .filter((s) => destinationKeys.has(s.key))
+      .map((s) => s.reservationId),
+  );
+  const grants = new Map<
+    string,
+    { guest: ReservationAccess; target: ReservationAccess | undefined }
+  >();
   const items = reservations.map((r) => {
     const entries = [...r.participants, ...r.waitlist];
     const mine = entries.filter((p) => p.tokenHash === guestHash),
@@ -54,18 +71,21 @@ async function snapshot(
       (r.hostTokenHash === guestHash &&
         theirs.some((p) => p.name !== r.hostName)) ||
       (r.hostTokenHash === userHash && mine.some((p) => p.name !== r.hostName));
-    const keyConflict = source.some(
-      (s) => s.reservationId === r.id && dest.some((d) => d.key === s.key),
-    );
     const conflict =
       mine.length && theirs.length
         ? "同场存在两份正式或候补名额"
         : hostConflict
           ? "发起人昵称与关联后的名单不一致"
-          : keyConflict
+          : conflictingIds.has(r.id)
             ? "创建提交编号冲突"
             : null;
-    const grant = r.access.find((g) => g.tokenHash === guestHash);
+    let grant: ReservationAccess | undefined;
+    let target: ReservationAccess | undefined;
+    for (const access of r.access) {
+      if (access.tokenHash === guestHash) grant = access;
+      if (access.tokenHash === userHash) target = access;
+    }
+    if (grant) grants.set(r.id, { guest: grant, target });
     const readable =
       r.visibility === "PUBLIC" ||
       r.hostTokenHash === guestHash ||
@@ -86,15 +106,18 @@ async function snapshot(
         r.status === "ENDED",
     };
   });
+  const itemIds = new Set(items.map((i) => i.id));
   for (const s of source)
-    if (!items.some((i) => i.id === s.reservationId))
+    if (!itemIds.has(s.reservationId)) {
       items.push({
         id: s.reservationId,
         label: "已永久删除的创建记录",
-        conflict: dest.some((d) => d.key === s.key) ? "创建提交编号冲突" : null,
+        conflict: destinationKeys.has(s.key) ? "创建提交编号冲突" : null,
         canOpen: false,
         historical: true,
       });
+      itemIds.add(s.reservationId);
+    }
   // Include both identities' membership and authorization state in the confirmation fingerprint.
   return {
     items,
@@ -110,8 +133,28 @@ async function snapshot(
     ),
     version: guest?.version ?? 0,
     retired: guest?.retired ?? false,
+    grants,
   };
 }
+
+async function hasGuestRecords(
+  tx: Prisma.TransactionClient,
+  guestHash: string,
+) {
+  if (
+    await tx.gameReservation.findFirst({
+      where: guestReservations(guestHash),
+      select: { id: true },
+    })
+  )
+    return true;
+  // Creation results survive permanent deletion and still belong to the guest.
+  return !!(await tx.creationRequest.findFirst({
+    where: { ownerTokenHash: guestHash },
+    select: { id: true },
+  }));
+}
+
 export async function previewGuestClaim(v: Viewer) {
   const user = requireUser(v);
   if (!v.guestToken) return { items: [], fingerprint: "", guestStorageKey: "" };
@@ -172,7 +215,10 @@ export async function claimGuestRecords(v: Viewer, input: unknown) {
         "记录已变化，请重新预览并确认关联",
         409,
       );
-    if (ids.some((id) => !s.items.some((i) => i.id === id && !i.conflict)))
+    const eligibleIds = new Set(
+      s.items.filter((i) => !i.conflict).map((i) => i.id),
+    );
+    if (ids.some((id) => !eligibleIds.has(id)))
       throw new AppError(
         "CLAIM_CONFLICT",
         "所选场次存在冲突或不属于当前游客",
@@ -198,18 +244,12 @@ export async function claimGuestRecords(v: Viewer, input: unknown) {
       where: { reservationId: { in: ids }, ownerTokenHash: guestHash },
       data: { ownerTokenHash: userHash },
     });
-    const grants = await tx.reservationAccess.findMany({
-      where: { reservationId: { in: ids }, tokenHash: guestHash },
-    });
-    for (const grant of grants) {
-      const target = await tx.reservationAccess.findUnique({
-        where: {
-          reservationId_tokenHash: {
-            reservationId: grant.reservationId,
-            tokenHash: userHash,
-          },
-        },
-      });
+    // The locked snapshot already includes both identities' grants. Ownership
+    // updates above leave these records untouched; keep them within this attempt.
+    for (const id of ids) {
+      const pair = s.grants.get(id);
+      if (!pair) continue;
+      const { guest: grant, target } = pair;
       if (target) {
         await tx.reservationAccess.update({
           where: { id: target.id },
@@ -225,8 +265,7 @@ export async function claimGuestRecords(v: Viewer, input: unknown) {
           data: { tokenHash: userHash },
         });
     }
-    const remaining = await snapshot(tx, guestHash, userHash);
-    const retired = remaining.items.length === 0;
+    const retired = !(await hasGuestRecords(tx, guestHash));
     await tx.guestIdentity.update({
       where: { hash: guestHash },
       data: { retired, version: { increment: 1 } },

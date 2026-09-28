@@ -7,8 +7,9 @@ import { historyCursor } from "./reservation-history";
 import { remainingBudget } from "./request-budget";
 import { measureTransaction } from "./request-metrics";
 import { removalItemSchema } from "../lib/roster-management";
+import type { GameReservation, Prisma } from "@prisma/client";
 
-type ViewerAdmin = { id: number; sessionVersion: number } | null;
+export type ViewerAdmin = { id: number; sessionVersion: number } | null;
 const state = globalThis as typeof globalThis & { removalScopeSecret?: string };
 const fallbackSecret = (state.removalScopeSecret ??=
   randomBytes(32).toString("hex"));
@@ -32,10 +33,6 @@ export async function rosterRemovals(
   before?: number,
   expectedScope?: string,
 ) {
-  const validToken = validIdentity(token) ? token : "";
-  const hash = validToken
-    ? createHash("sha256").update(validToken).digest("hex")
-    : "";
   const budget = Math.floor(remainingBudget());
   if (budget < 2) throw new AppError("BUSY", "服务繁忙，请稍后重试", 503);
   return measureTransaction(() =>
@@ -46,59 +43,7 @@ export async function rosterRemovals(
         });
         if (!r) throw new AppError("NOT_FOUND", "预约不存在或已被移除", 404);
         await requireReservationAccess(tx, r, token, !!admin);
-        const all = !!admin || (!!hash && hash === r.hostTokenHash);
-        const scope = createHmac(
-          "sha256",
-          process.env.ADMIN_SESSION_SECRET || fallbackSecret,
-        )
-          .update(
-            JSON.stringify([
-              "roster-removals",
-              id,
-              validToken,
-              all,
-              admin?.id,
-              admin?.sessionVersion,
-            ]),
-          )
-          .digest("hex");
-        if (expectedScope && expectedScope !== scope)
-          throw new AppError(
-            "VIEWER_CHANGED",
-            "查看权限已变化，请刷新页面",
-            409,
-          );
-        const rows =
-          !all && !hash
-            ? []
-            : await tx.rosterRemoval.findMany({
-                where: {
-                  reservationId: id,
-                  ...(!all ? { targetTokenHash: hash } : {}),
-                  ...(before === undefined ? {} : { id: { lt: before } }),
-                },
-                select: {
-                  id: true,
-                  kind: true,
-                  targetName: true,
-                  reason: true,
-                  actorRole: true,
-                  createdAt: true,
-                },
-                orderBy: { id: "desc" },
-                take: 11,
-              });
-        const items = rows.slice(0, 10).map((r) =>
-          removalItemSchema.parse({
-            ...r,
-            createdAt: r.createdAt.toISOString(),
-          }),
-        );
-        return {
-          items,
-          nextBefore: rows.length > 10 ? items.at(-1)!.id : null,
-          scope,
-        };
+        return readRosterRemovals(tx, r, token, admin, before, expectedScope);
       },
       {
         maxWait: Math.max(1, Math.min(1000, Math.floor(budget / 4))),
@@ -106,4 +51,70 @@ export async function rosterRemovals(
       },
     ),
   );
+}
+
+// Internal reader: reservation access must already be checked in this same
+// transaction. Private visibility and scope checks still happen here.
+export async function readRosterRemovals(
+  tx: Prisma.TransactionClient,
+  reservation: Pick<GameReservation, "id" | "hostTokenHash">,
+  token?: string,
+  admin: ViewerAdmin = null,
+  before?: number,
+  expectedScope?: string,
+) {
+  const { id } = reservation;
+  const validToken = validIdentity(token) ? token : "";
+  const hash = validToken
+    ? createHash("sha256").update(validToken).digest("hex")
+    : "";
+  const all = !!admin || (!!hash && hash === reservation.hostTokenHash);
+  const scope = createHmac(
+    "sha256",
+    process.env.ADMIN_SESSION_SECRET || fallbackSecret,
+  )
+    .update(
+      JSON.stringify([
+        "roster-removals",
+        id,
+        validToken,
+        all,
+        admin?.id,
+        admin?.sessionVersion,
+      ]),
+    )
+    .digest("hex");
+  if (expectedScope && expectedScope !== scope)
+    throw new AppError("VIEWER_CHANGED", "查看权限已变化，请刷新页面", 409);
+  const rows =
+    !all && !hash
+      ? []
+      : await tx.rosterRemoval.findMany({
+          where: {
+            reservationId: id,
+            ...(!all ? { targetTokenHash: hash } : {}),
+            ...(before === undefined ? {} : { id: { lt: before } }),
+          },
+          select: {
+            id: true,
+            kind: true,
+            targetName: true,
+            reason: true,
+            actorRole: true,
+            createdAt: true,
+          },
+          orderBy: { id: "desc" },
+          take: 11,
+        });
+  const items = rows.slice(0, 10).map((r) =>
+    removalItemSchema.parse({
+      ...r,
+      createdAt: r.createdAt.toISOString(),
+    }),
+  );
+  return {
+    items,
+    nextBefore: rows.length > 10 ? items.at(-1)!.id : null,
+    scope,
+  };
 }

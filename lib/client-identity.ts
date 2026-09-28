@@ -1,5 +1,6 @@
 import type { PublicIdentity } from "./user-account";
 let current: PublicIdentity | undefined;
+let revision = 0;
 export const identityEventSource = `${Date.now()}:${Math.random()}`;
 export function newClaimKey() {
   const bytes = crypto.getRandomValues(new Uint8Array(16));
@@ -11,6 +12,8 @@ export function newClaimKey() {
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
 }
 export const getClientIdentity = () => current;
+// Local lifetime marker only; never sent to the server or persisted.
+export const getClientIdentityRevision = () => revision;
 export function bindLegacyGuest(storageKey: string) {
   try {
     const owner = sessionStorage.getItem("party-legacy-guest");
@@ -53,6 +56,7 @@ export function setClientIdentity(value: PublicIdentity) {
       } catch {}
     }
   }
+  if (current?.scope !== value.scope) revision++;
   current = value;
 }
 export function scopedStorageKey(base: string) {

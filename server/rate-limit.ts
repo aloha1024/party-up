@@ -1,19 +1,58 @@
 import { createHash } from "node:crypto";
 import { isIP } from "node:net";
 import { AppError } from "./errors";
-type Bucket = { count: number; reset: number };
+type Bucket = { key: string; count: number; reset: number };
 export class RateLimiter {
   private buckets = new Map<string, Bucket>();
+  // One heap entry per bucket; repeated requests never append cleanup records.
+  // Windows differ between callers, so insertion order is not expiration order.
+  private expirations: Bucket[] = [];
   constructor(private maximum = 10000) {}
+
+  private schedule(bucket: Bucket) {
+    let index = this.expirations.length;
+    this.expirations.push(bucket);
+    while (index > 0) {
+      const parent = Math.floor((index - 1) / 2);
+      if (this.expirations[parent].reset <= bucket.reset) break;
+      this.expirations[index] = this.expirations[parent];
+      index = parent;
+    }
+    this.expirations[index] = bucket;
+  }
+
+  private expire(now: number) {
+    while (this.expirations.length && this.expirations[0].reset <= now) {
+      const expired = this.expirations[0];
+      const last = this.expirations.pop()!;
+      this.buckets.delete(expired.key);
+      if (!this.expirations.length) continue;
+      let index = 0;
+      while (index * 2 + 1 < this.expirations.length) {
+        let child = index * 2 + 1;
+        const right = child + 1;
+        if (
+          right < this.expirations.length &&
+          this.expirations[right].reset < this.expirations[child].reset
+        )
+          child = right;
+        if (last.reset <= this.expirations[child].reset) break;
+        this.expirations[index] = this.expirations[child];
+        index = child;
+      }
+      this.expirations[index] = last;
+    }
+  }
+
   take(key: string, limit: number, windowMs = 60000, now = Date.now()) {
-    for (const [k, bucket] of this.buckets)
-      if (bucket.reset <= now) this.buckets.delete(k);
+    this.expire(now);
     let bucket = this.buckets.get(key);
     if (!bucket) {
       if (this.buckets.size >= this.maximum)
         throw new AppError("RATE_LIMIT", "请求较多，请稍后重试", 429, 60);
-      bucket = { count: 0, reset: now + windowMs };
+      bucket = { key, count: 0, reset: now + windowMs };
       this.buckets.set(key, bucket);
+      this.schedule(bucket);
     }
     if (bucket.count >= limit) {
       const seconds = Math.max(1, Math.ceil((bucket.reset - now) / 1000));

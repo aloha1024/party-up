@@ -1,6 +1,6 @@
 import { CreateForm } from "@/components/reservation-form";
 import { notFound } from "next/navigation";
-import { identity } from "@/server/http";
+import { pageIdentity } from "@/server/page-identity";
 import { AppError } from "@/server/errors";
 import { reservationTemplate } from "@/server/reservation-template";
 import { reservationTemplateSourceSchema } from "@/lib/reservation-template";
@@ -21,7 +21,10 @@ export default async function Page({
       <p role="alert">来源预约参数无效，请从预约详情页重新点击“再开一局”。</p>
     );
   try {
-    const template = await reservationTemplate(parsed.data, await identity());
+    const template = await reservationTemplate(
+      parsed.data,
+      await pageIdentity(),
+    );
     return <CreateForm key={`copy:${parsed.data}`} template={template} />;
   } catch (error) {
     if (error instanceof AppError) {

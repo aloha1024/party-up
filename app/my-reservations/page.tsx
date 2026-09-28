@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { ReservationList } from "@/components/reservation-list";
 import { InvalidReservationFilters } from "@/components/invalid-reservation-filters";
 import { type PageSearchParams } from "@/lib/reservation-list";
-import { identity } from "@/server/http";
+import { pageIdentity } from "@/server/page-identity";
 import { listMyReservations } from "@/server/reservation-list";
 import { personalPageSchema } from "@/lib/reservation-schedule";
 import { listMySchedule } from "@/server/reservation-schedule";
@@ -19,7 +19,7 @@ export default async function MyReservations({
   const parsed = personalPageSchema.safeParse(await searchParams);
   if (!parsed.success)
     return <InvalidReservationFilters path="/my-reservations" />;
-  const token = await identity();
+  const token = await pageIdentity();
   if (parsed.data.layout === "schedule") {
     const listing = await listMySchedule(parsed.data, token);
     return (

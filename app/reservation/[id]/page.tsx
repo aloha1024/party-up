@@ -2,11 +2,9 @@ import { InvitationEntry } from "@/components/reservation-invitation";
 import { randomUUID } from "node:crypto";
 import { notFound } from "next/navigation";
 import { ReservationDetail } from "@/components/reservation-detail";
-import { AppError, detail } from "@/server/reservations";
-import { identity } from "@/server/http";
+import { AppError, reservationPageData } from "@/server/reservations";
+import { pageIdentity } from "@/server/page-identity";
 import { currentAdmin } from "@/server/admin";
-import { rosterRemovals } from "@/server/roster-removals";
-import { reservationHistory } from "@/server/reservation-history";
 export const dynamic = "force-dynamic";
 export default async function Page({
   params,
@@ -15,14 +13,18 @@ export default async function Page({
 }) {
   const { id } = await params;
   try {
-    const token = await identity();
+    const token = await pageIdentity();
     const admin = await currentAdmin();
-    const reservation = await detail(id, token, !!admin);
+    const { reservation, history, removals } = await reservationPageData(
+      id,
+      token,
+      admin,
+    );
     return (
       <ReservationDetail
-        history={await reservationHistory(id, undefined, token, !!admin)}
+        history={history}
         admin={!!admin}
-        removals={await rosterRemovals(id, token, admin)}
+        removals={removals}
         reservation={reservation}
         refreshSample={randomUUID()}
       />

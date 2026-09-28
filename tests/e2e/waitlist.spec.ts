@@ -90,10 +90,25 @@ test("waitlist position refreshes, personal membership moves after automatic pro
       page.getByText("你在候补第 1 位", { exact: true }),
     ).toBeVisible();
     await context.setOffline(true);
+    await expect.poll(() => page.evaluate(() => navigator.onLine)).toBe(false);
     await page.getByRole("button", { name: "退出候补", exact: true }).click();
     await expect(page.locator('aside [role="alert"]')).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: "退出候补", exact: true }),
+    ).toBeEnabled();
+    // Observe a committed server update after reconnecting. A simultaneous full
+    // reload can cancel the automatic refresh and trigger another navigation.
+    const recoveredNote = "联网后重新核对候补" + token().slice(0, 8);
+    await db.gameReservation.update({
+      where: { id: r.id },
+      data: { description: recoveredNote },
+    });
+    await expect(page.getByText(recoveredNote, { exact: true })).toHaveCount(0);
     await context.setOffline(false);
-    await page.reload();
+    await expect.poll(() => page.evaluate(() => navigator.onLine)).toBe(true);
+    await expect(page.getByText(recoveredNote, { exact: true })).toBeVisible({
+      timeout: 22000,
+    });
     await expect(
       page.getByText("你在候补第 1 位", { exact: true }),
     ).toBeVisible();

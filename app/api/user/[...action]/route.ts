@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
 import { cookies } from "next/headers";
-import { body, currentViewer, respond } from "@/server/http";
+import { body, respond } from "@/server/http";
 import {
   USER_COOKIE,
   USER_SECONDS,
@@ -25,11 +25,10 @@ type Context = { params: Promise<{ action: string[] }> };
 async function route(req: NextRequest, context: Context) {
   return respond(
     req,
-    async () => {
+    async (_token, viewer) => {
       const action = (await context.params).action.join("/"),
         method = req.method;
-      const viewer = await currentViewer(),
-        jar = await cookies();
+      const jar = await cookies();
       if (method === "GET") {
         if (action === "session") return publicViewer(viewer);
         if (action === "guest-claims") return previewGuestClaim(viewer);

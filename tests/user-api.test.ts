@@ -122,12 +122,31 @@ test(
       const preview = (
         await (await send("/api/user/guest-claims", "GET", cookie)).json()
       ).data;
+      assert.deepEqual(Object.keys(preview).sort(), [
+        "fingerprint",
+        "guestStorageKey",
+        "items",
+      ]);
+      assert.deepEqual(Object.keys(preview.items[0]).sort(), [
+        "canOpen",
+        "conflict",
+        "historical",
+        "id",
+        "label",
+      ]);
       const claim = await send("/api/user/guest-claims", "POST", cookie, {
         key: randomUUID(),
         fingerprint: preview.fingerprint,
         ids: [r.id],
       });
       assert.equal(claim.status, 200);
+      assert.equal(claim.headers.get("cache-control"), "no-store");
+      assert.deepEqual(Object.keys((await claim.json()).data).sort(), [
+        "fromStorage",
+        "ids",
+        "retired",
+        "toStorage",
+      ]);
       assert.equal(
         (await (await send(`/api/reservations/${r.id}`, "GET", cookie)).json())
           .data.isHost,

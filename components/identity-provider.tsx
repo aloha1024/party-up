@@ -8,14 +8,9 @@ import {
   type ReactNode,
 } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
 import type { PublicIdentity } from "../lib/user-account";
-import {
-  getClientIdentity,
-  setClientIdentity,
-  identityEventSource,
-} from "../lib/client-identity";
-import { request } from "../lib/client-request";
+import { setClientIdentity, identityEventSource } from "../lib/client-identity";
+import { createIdentityCheck } from "../lib/identity-check";
 const Context = createContext<PublicIdentity | undefined>(undefined);
 export const useIdentity = () => useContext(Context);
 export function IdentityProvider({
@@ -36,21 +31,22 @@ export function IdentityProvider({
     installed.current = identity.scope;
   }
   useEffect(() => {
-    const invalidate = () => setStale(true);
+    if (stale) return;
+    const invalidate = () => {
+      checks.dispose();
+      setStale(true);
+    };
+    const checks = createIdentityCheck({
+      canCheck: () =>
+        document.visibilityState === "visible" && navigator.onLine,
+      invalidate,
+    });
+    const check = () => void checks.check();
     const restored = (e: PageTransitionEvent) => {
       if (e.persisted) invalidate();
     };
     const storage = (e: StorageEvent) => {
       if (e.key === "party-identity-event") invalidate();
-    };
-    const check = async () => {
-      if (document.visibilityState !== "visible" || !navigator.onLine) return;
-      const expected = getClientIdentity()?.scope;
-      try {
-        const next = await request<PublicIdentity>("/api/identity");
-        if (expected === getClientIdentity()?.scope && next.scope !== expected)
-          invalidate();
-      } catch {}
     };
     let channel: BroadcastChannel | undefined;
     try {
@@ -66,6 +62,7 @@ export function IdentityProvider({
     window.addEventListener("online", check);
     document.addEventListener("visibilitychange", check);
     return () => {
+      checks.dispose();
       channel?.close();
       window.removeEventListener("storage", storage);
       window.removeEventListener("party-identity-stale", invalidate);
@@ -74,7 +71,7 @@ export function IdentityProvider({
       window.removeEventListener("online", check);
       document.removeEventListener("visibilitychange", check);
     };
-  }, [identity.scope]);
+  }, [identity.scope, stale]);
   if (stale)
     return (
       <div className="panel mx-auto my-10 max-w-xl space-y-4 p-6" role="alert">

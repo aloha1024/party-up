@@ -80,31 +80,7 @@ export async function reservationHistory(
         if (!reservation)
           throw new AppError("NOT_FOUND", "预约不存在或已被移除", 404);
         await requireReservationAccess(tx, reservation, token, admin);
-        const rows = await tx.reservationChange.findMany({
-          where: {
-            reservationId: id,
-            ...(before === undefined ? {} : { id: { lt: before } }),
-          },
-          orderBy: { id: "desc" },
-          take: 11,
-        });
-        const items = rows.slice(0, 10).map((row) =>
-          historyItemSchema.parse({
-            id: row.id,
-            action: row.action,
-            actorRole: row.actorRole,
-            fields: JSON.parse(row.fields),
-            scheduledAtBefore: row.scheduledAtBefore?.toISOString() ?? null,
-            scheduledAtAfter: row.scheduledAtAfter?.toISOString() ?? null,
-            maxPlayersBefore: row.maxPlayersBefore,
-            maxPlayersAfter: row.maxPlayersAfter,
-            createdAt: row.createdAt.toISOString(),
-          }),
-        );
-        return {
-          items,
-          nextBefore: rows.length > 10 ? items.at(-1)!.id : null,
-        };
+        return readReservationHistory(tx, id, before);
       },
       {
         maxWait: Math.max(1, Math.min(1000, Math.floor(budget / 4))),
@@ -112,4 +88,38 @@ export async function reservationHistory(
       },
     ),
   );
+}
+
+// Internal reader: the caller must authorize this reservation in the same
+// transaction before reading its history. Public entry points do so above.
+export async function readReservationHistory(
+  tx: Prisma.TransactionClient,
+  id: string,
+  before?: number,
+): Promise<HistoryPage> {
+  const rows = await tx.reservationChange.findMany({
+    where: {
+      reservationId: id,
+      ...(before === undefined ? {} : { id: { lt: before } }),
+    },
+    orderBy: { id: "desc" },
+    take: 11,
+  });
+  const items = rows.slice(0, 10).map((row) =>
+    historyItemSchema.parse({
+      id: row.id,
+      action: row.action,
+      actorRole: row.actorRole,
+      fields: JSON.parse(row.fields),
+      scheduledAtBefore: row.scheduledAtBefore?.toISOString() ?? null,
+      scheduledAtAfter: row.scheduledAtAfter?.toISOString() ?? null,
+      maxPlayersBefore: row.maxPlayersBefore,
+      maxPlayersAfter: row.maxPlayersAfter,
+      createdAt: row.createdAt.toISOString(),
+    }),
+  );
+  return {
+    items,
+    nextBefore: rows.length > 10 ? items.at(-1)!.id : null,
+  };
 }

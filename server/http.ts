@@ -12,6 +12,7 @@ import {
   viewerContext,
   USER_COOKIE,
   GUEST_COOKIE,
+  type Viewer,
 } from "./user-identity";
 export async function identity() {
   const v = await currentViewer();
@@ -26,7 +27,7 @@ export async function currentViewer() {
 }
 export async function respond(
   req: NextRequest,
-  operation: (token: string) => Promise<unknown>,
+  operation: (token: string, viewer: Viewer) => Promise<unknown>,
   withIdentity = true,
 ) {
   const context = requestContext(req.method, req.nextUrl.pathname);
@@ -83,8 +84,8 @@ export async function respond(
           );
         return send({
           data: await (businessWrite
-            ? viewerContext.run(viewer, () => operation(previous || ""))
-            : operation(previous || "")),
+            ? viewerContext.run(viewer, () => operation(previous || "", viewer))
+            : operation(previous || "", viewer)),
         });
       } catch (error) {
         let message = "服务暂时不可用，请稍后重试";

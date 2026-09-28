@@ -5,6 +5,7 @@ type RequestOptions<T> = {
   schema?: ZodType<T>;
   timeoutMs?: number;
   idempotencyKey?: string;
+  isCurrent?: () => boolean;
 };
 export class ClientRequestError extends Error {
   constructor(
@@ -24,8 +25,24 @@ export async function request<T = unknown>(
   url: string,
   method = "GET",
   data?: unknown,
-  { schema, timeoutMs = 15000, idempotencyKey }: RequestOptions<T> = {},
+  {
+    schema,
+    timeoutMs = 15000,
+    idempotencyKey,
+    isCurrent,
+  }: RequestOptions<T> = {},
 ): Promise<T> {
+  let active = true;
+  const assertCurrent = () => {
+    if (isCurrent && (!active || !isCurrent()))
+      throw new ClientRequestError(
+        "身份已变化，请在原身份下核对操作结果。",
+        "HTTP",
+        409,
+        "IDENTITY_CHANGED",
+      );
+  };
+  assertCurrent();
   const expectedIdentity = getClientIdentity()?.scope;
   const controller = new AbortController();
   const uncertain =
@@ -41,6 +58,7 @@ export async function request<T = unknown>(
   let timer: ReturnType<typeof setTimeout> | undefined;
   const timeout = new Promise<never>((_, reject) => {
     timer = setTimeout(() => {
+      active = false;
       reject(new ClientRequestError("请求超时。" + uncertain, "TIMEOUT"));
       controller.abort();
     }, timeoutMs);
@@ -77,6 +95,7 @@ export async function request<T = unknown>(
     }
     // A late response from an old page must not clear the new identity's draft,
     // navigate it, or populate its private panels. Do not invalidate the new page.
+    assertCurrent();
     if (getClientIdentity()?.scope !== expectedIdentity)
       throw new ClientRequestError(
         "身份已变化，请在原身份下核对操作结果。",
@@ -136,6 +155,7 @@ export async function request<T = unknown>(
     // Also bounds reading a response body that stops arriving after its headers.
     return await Promise.race([timeout, operation()]);
   } finally {
+    active = false;
     clearTimeout(timer);
   }
 }
