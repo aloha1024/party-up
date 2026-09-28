@@ -42,6 +42,8 @@ export function ReservationDetail({
 }) {
   const router = useRouter();
   const viewer = useIdentity();
+  const [hydrated, setHydrated] = useState(false);
+  useEffect(() => setHydrated(true), []);
   const [name, setName] = useState(viewer?.user?.nickname ?? "");
   const [error, setError] = useState("");
   const [pending, startTransition] = useTransition();
@@ -372,12 +374,16 @@ export function ReservationDetail({
                     maxLength={24}
                     placeholder="输入昵称，加入这一局"
                     required
-                    disabled={(state !== "OPEN" && !canWait) || pending}
+                    disabled={
+                      !hydrated || (state !== "OPEN" && !canWait) || pending
+                    }
                   />
                 </Field>
                 <Button
                   className="mt-4 w-full"
-                  disabled={(state !== "OPEN" && !canWait) || pending}
+                  disabled={
+                    !hydrated || (state !== "OPEN" && !canWait) || pending
+                  }
                 >
                   {pending ? <Loader2 className="animate-spin" /> : <Plus />}
                   {pending

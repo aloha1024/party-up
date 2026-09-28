@@ -99,8 +99,25 @@ test("detail refresh stays timely and preserves an unfinished nickname", async (
   expect(created.ok()).toBe(true);
   const { data } = await created.json();
   const now = await clock(page);
-  await page.goto("/reservation/" + data.id);
+  let releaseScripts!: () => void;
+  const scriptsReady = new Promise<void>((resolve) => {
+    releaseScripts = resolve;
+  });
+  await page.route("**/_next/static/**", async (route) => {
+    if (route.request().resourceType() === "script") await scriptsReady;
+    await route.continue();
+  });
   const input = page.getByLabel("你的昵称");
+  try {
+    // A slow script load must not accept text before React owns the input.
+    await page.goto("/reservation/" + data.id, { waitUntil: "commit" });
+    await expect(input).toBeDisabled();
+    await expect(
+      page.getByRole("button", { name: "加入接龙", exact: true }),
+    ).toBeDisabled();
+  } finally {
+    releaseScripts();
+  }
   await input.fill("还没提交的昵称");
   await waitForInterval(page, 13500, 15000);
   await page.clock.pauseAt(new Date(now.getTime() + 2000));
