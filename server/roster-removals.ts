@@ -1,4 +1,5 @@
 import { requireReservationAccess } from "./reservation-access";
+import { validIdentity } from "./user-identity";
 import { createHash, createHmac, randomBytes } from "node:crypto";
 import { db } from "./db";
 import { AppError } from "./errors";
@@ -31,7 +32,7 @@ export async function rosterRemovals(
   before?: number,
   expectedScope?: string,
 ) {
-  const validToken = token && /^[a-f0-9]{64}$/.test(token) ? token : "";
+  const validToken = validIdentity(token) ? token : "";
   const hash = validToken
     ? createHash("sha256").update(validToken).digest("hex")
     : "";

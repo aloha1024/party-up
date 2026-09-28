@@ -2,6 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { z } from "zod";
 import { ClientRequestError, request } from "../lib/client-request";
+import { setClientIdentity } from "../lib/client-identity";
 
 test("client requests preserve same-origin identity, encode writes once and validate returned data", async (t) => {
   let signal: AbortSignal | undefined;
@@ -34,6 +35,43 @@ test("client requests preserve same-origin identity, encode writes once and vali
   t.mock.timers.tick(15001);
   assert.equal(signal?.aborted, false, "successful request clears its timeout");
   assert.equal(fetchMock.mock.callCount(), 1);
+});
+
+test("a late response from the previous identity cannot be applied to a new account", async (t) => {
+  const identity = (scope: string) => ({
+    ready: true,
+    scope,
+    storageKey: scope,
+    mode: "user" as const,
+    user: null,
+    capabilities: {
+      createInvitation: true,
+      copyReservation: true,
+      calendar: true,
+    },
+  });
+  setClientIdentity(identity("old-account"));
+  let finish!: (response: Response) => void;
+  const response = new Promise<Response>((resolve) => {
+    finish = resolve;
+  });
+  t.mock.method(
+    globalThis,
+    "fetch",
+    async (_url: unknown, init: RequestInit) => {
+      assert.equal(
+        (init.headers as Record<string, string>)["X-Identity-Scope"],
+        "old-account",
+      );
+      return response;
+    },
+  );
+  const result = request("/api/reservations", "POST", {
+    gameName: "Old draft",
+  });
+  setClientIdentity(identity("new-account"));
+  finish(Response.json({ data: { id: "old-reservation" } }));
+  await assert.rejects(result, { status: 409, serverCode: "IDENTITY_CHANGED" });
 });
 
 test("client errors preserve business messages and translate proxy HTML without exposing response content", async (t) => {

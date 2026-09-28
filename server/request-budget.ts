@@ -1,6 +1,7 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import { Prisma } from "@prisma/client";
 import { db } from "./db";
+import { guardViewer } from "./user-identity";
 import { AppError } from "./errors";
 import { measureTransaction, recordBusy, recordRetry } from "./request-metrics";
 function busyError() {
@@ -29,11 +30,17 @@ export async function writeTransaction<T>(
     if (remaining < 200) throw busyError();
     try {
       return await measureTransaction(() =>
-        db.$transaction(run, {
-          isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
-          maxWait: Math.max(1, Math.floor(Math.min(1000, remaining / 4))),
-          timeout: Math.max(1, Math.floor(Math.min(3000, remaining * 0.7))),
-        }),
+        db.$transaction(
+          async (tx) => {
+            await guardViewer(tx);
+            return run(tx);
+          },
+          {
+            isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+            maxWait: Math.max(1, Math.floor(Math.min(1000, remaining / 4))),
+            timeout: Math.max(1, Math.floor(Math.min(3000, remaining * 0.7))),
+          },
+        ),
       );
     } catch (error) {
       const retryable =

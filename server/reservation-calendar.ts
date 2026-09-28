@@ -1,5 +1,6 @@
 import { requireReservationAccess } from "./reservation-access";
 import { db } from "./db";
+import { requireMember } from "./user-identity";
 import { AppError } from "./errors";
 import { hashToken } from "./reservations";
 import type { CalendarReservation } from "../lib/reservation-calendar";
@@ -11,7 +12,8 @@ export async function calendarReservation(
   const access = await db.gameReservation.findUnique({ where: { id } });
   if (!access) throw new AppError("NOT_FOUND", "预约不存在", 404);
   await requireReservationAccess(db, access, token);
-  if (!token || !/^[a-f0-9]{64}$/.test(token))
+  await requireMember(token);
+  if (!token)
     throw new AppError(
       "IDENTITY_REQUIRED",
       "请使用正式报名时的浏览器添加日历",

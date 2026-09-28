@@ -1,11 +1,10 @@
 import { createHash } from "node:crypto";
 import type { GameReservation, Prisma } from "@prisma/client";
 import { AppError } from "./errors";
+import { validIdentity } from "./user-identity";
 
 export const identityHash = (token?: string) =>
-  token && /^[a-f0-9]{64}$/.test(token)
-    ? createHash("sha256").update(token).digest("hex")
-    : "";
+  validIdentity(token) ? createHash("sha256").update(token).digest("hex") : "";
 // Called inside the caller's read snapshot or reservation write lock. Admin is
 // supplied only by a server caller that has validated the current session.
 export async function requireReservationAccess(

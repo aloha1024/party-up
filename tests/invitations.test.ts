@@ -1,3 +1,5 @@
+import { registeredToken } from "./support/member";
+import { identityFetch as fetch } from "./support/member";
 import "./support/isolated";
 import { test, after } from "node:test";
 import assert from "node:assert/strict";
@@ -48,7 +50,7 @@ const data = () => ({
   scheduledAt: new Date(Date.now() + 86400000).toISOString(),
 });
 async function fixture() {
-  const owner = token(),
+  const owner = await registeredToken(),
     input = data();
   const r = await createReservation({ ...input, visibility: "INVITE" }, owner);
   ids.push(r.id);
@@ -69,7 +71,7 @@ after(async () => {
 });
 test("invites are excluded before public counts/pagination and all related reads enforce access", async () => {
   const f = await fixture(),
-    visitor = token();
+    visitor = await registeredToken();
   for (const view of ["all", "available", "upcoming"]) {
     assert.equal(
       (await listReservations({ q: f.input.gameName, view })).total,

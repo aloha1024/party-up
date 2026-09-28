@@ -1,5 +1,6 @@
 import { Prisma } from "@prisma/client";
 import { db } from "./db";
+import { validIdentity } from "./user-identity";
 import { measureTransaction } from "./request-metrics";
 import {
   reservationListSchema,
@@ -43,7 +44,7 @@ export async function listMyReservations(
   now = new Date(),
 ): Promise<ReservationPage> {
   const { tab, ...filters } = myReservationListSchema.parse(input);
-  if (!token || !/^[a-f0-9]{64}$/.test(token)) {
+  if (!validIdentity(token)) {
     return {
       items: [],
       total: 0,

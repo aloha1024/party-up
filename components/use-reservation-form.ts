@@ -32,11 +32,13 @@ import {
 } from "react";
 import { toast } from "sonner";
 import { z } from "zod";
+import { useIdentity } from "./identity-provider";
 
 export function useReservationForm(
   initialReservation?: Reservation,
   template?: ReservationTemplate,
 ) {
+  const viewer = useIdentity();
   // A recovered draft must keep the server version it was originally based on.
   const [reservation] = useState(initialReservation);
   const [conflict, setConflict] = useState(false);
@@ -53,7 +55,11 @@ export function useReservationForm(
     return {
       visibility: reservation?.visibility ?? template?.visibility ?? "PUBLIC",
       gameName: reservation?.gameName ?? template?.gameName ?? "",
-      hostName: reservation?.hostName ?? template?.hostName ?? "",
+      hostName:
+        reservation?.hostName ??
+        template?.hostName ??
+        viewer?.user?.nickname ??
+        "",
       date: localTime.slice(0, 10),
       time: localTime.slice(11, 16),
       maxPlayers: String(reservation?.maxPlayers ?? template?.maxPlayers ?? 5),

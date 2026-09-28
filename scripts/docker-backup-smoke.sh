@@ -46,6 +46,10 @@ try {
   await db.gameReservation.update({where:{id:reservation.id},data:{status:'ENDED',endedAt:new Date()}});
   await db.reservationAccess.create({data:{reservationId:reservation.id,tokenHash:'ci-invite-member',inviteVersion:1,hasJoined:true}});
   await db.rosterRemoval.create({data:{reservationId:reservation.id,kind:'participants',entryId:'removed-fixture',targetName:'Removed fixture',targetTokenHash:'removed-fixture-hash',reason:'Fixture reason',actorRole:'HOST'}});
+  const user=await db.user.create({data:{username:'ci-backup-user',nickname:'Backup user',passwordHash:root.passwordHash,recoveryHash:'ci-recovery-hash'}});
+  await db.userSession.create({data:{id:'ci-session-hash',userId:user.id,version:0,expiresAt:new Date(Date.now()+86400000)}});
+  await db.guestIdentity.create({data:{hash:'ci-retired-guest',version:2,retired:true}});
+  await db.guestClaim.create({data:{userId:user.id,guestHash:'ci-retired-guest',key:'ci-claim-key',inputHash:'ci-input-hash',result:'{}'}});
 } finally {await db.$disconnect();}
 JS
 capture_state() {
@@ -57,8 +61,10 @@ try {
   const reservations=await db.gameReservation.findMany({orderBy:{id:'asc'},include:{participants:{orderBy:{id:'asc'}},waitlist:{orderBy:{id:'asc'}},changes:{orderBy:{id:'asc'}},removals:{orderBy:{id:'asc'}},access:{orderBy:{id:'asc'}}}});
   const admins=await db.adminCredential.findMany({orderBy:{id:'asc'}});
   const requests=await db.creationRequest.findMany({orderBy:{id:'asc'}});
+  const users=await db.user.findMany({orderBy:{id:'asc'},include:{sessions:{orderBy:{id:'asc'}},claims:{orderBy:{id:'asc'}}}});
+  const guests=await db.guestIdentity.findMany({orderBy:{hash:'asc'}});
   const bootstrap=JSON.parse(readFileSync('/app/data/admin-bootstrap.json','utf8'));
-  console.log(JSON.stringify({reservations,admins,requests,bootstrap}));
+  console.log(JSON.stringify({reservations,admins,requests,users,guests,bootstrap}));
 } finally {await db.$disconnect();}
 JS
 }
@@ -89,6 +95,10 @@ try {
   const salt=randomBytes(16).toString('hex');
   const passwordHash='scrypt:'+salt+':'+scryptSync(randomBytes(32),salt,64).toString('hex');
   await db.adminCredential.update({where:{username:'ci-backup-admin'},data:{passwordHash,isActive:false,sessionVersion:{increment:1}}});
+  await db.user.update({where:{username:'ci-backup-user'},data:{recoveryHash:null,isActive:false,version:{increment:1}}});
+  await db.userSession.deleteMany();
+  await db.guestClaim.deleteMany();
+  await db.guestIdentity.updateMany({data:{retired:false}});
   const path='/app/data/admin-bootstrap.json';
   const config=JSON.parse(readFileSync(path,'utf8'));
   config.ADMIN_SESSION_SECRET=randomBytes(32).toString('hex');

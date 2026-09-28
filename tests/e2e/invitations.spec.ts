@@ -1,3 +1,4 @@
+import { registeredToken, browserCookie } from "../support/member";
 import "../support/isolated";
 import { test, expect } from "@playwright/test";
 import { randomBytes } from "node:crypto";
@@ -21,7 +22,7 @@ test("invitation fragment redemption, rotation clears private detail and history
   context,
 }, info) => {
   test.setTimeout(90000);
-  const owner = token();
+  const owner = await registeredToken();
   const input = {
     gameName: "私密局" + token().slice(0, 8),
     hostName: "队长",
@@ -108,6 +109,12 @@ test("invitation fragment redemption, rotation clears private detail and history
 test("create private reservation, share only credential hint and rotate without exposing rosters", async ({
   page,
 }, info) => {
+  await page.context().addCookies([
+    {
+      ...browserCookie(await registeredToken()),
+      url: process.env.TEST_BASE_URL!,
+    },
+  ]);
   await page.goto("/reservation/new");
   await page
     .getByLabel("游戏名称", { exact: true })
@@ -170,7 +177,7 @@ test("lost invitation acceptance is manually retryable and waitlist promotion pr
   page,
 }) => {
   test.setTimeout(90000);
-  const owner = token(),
+  const owner = await registeredToken(),
     other = token(),
     input = {
       gameName: "邀请候补" + token().slice(0, 8),
@@ -234,7 +241,7 @@ test("lost invitation acceptance is manually retryable and waitlist promotion pr
     const calendar = await page.request.get(
       `/api/reservations/${r.id}/calendar`,
     );
-    expect(calendar.status()).toBe(200);
+    expect(calendar.status()).toBe(403);
     expect(await calendar.text()).not.toContain("invite=");
     expect(await calendar.text()).not.toContain(identity);
   } finally {

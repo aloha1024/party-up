@@ -1,3 +1,4 @@
+import { identityFetch as fetch } from "./support/member";
 import "./support/isolated";
 import { test } from "node:test";
 import assert from "node:assert/strict";

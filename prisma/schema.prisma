@@ -151,3 +151,49 @@ model ReservationAccess {
 
   @@unique([reservationId, tokenHash])
 }
+
+model User {
+  id                 String        @id @default(uuid())
+  username           String        @unique
+  nickname           String
+  passwordHash       String
+  identityKey        String        @unique @default(uuid())
+  recoveryHash       String?
+  isActive           Boolean       @default(true)
+  mustChangePassword Boolean       @default(false)
+  version            Int           @default(0)
+  createdAt          DateTime      @default(now())
+  sessions           UserSession[]
+  claims             GuestClaim[]
+}
+
+model UserSession {
+  id        String   @id
+  userId    String
+  version   Int
+  expiresAt DateTime
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+model GuestIdentity {
+  hash    String  @id
+  version Int     @default(0)
+  retired Boolean @default(false)
+}
+
+model GuestClaim {
+  id        String   @id @default(uuid())
+  userId    String
+  guestHash String
+  key       String
+  inputHash String
+  result    String
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, key])
+  @@index([guestHash])
+}

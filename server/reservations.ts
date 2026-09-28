@@ -1,5 +1,6 @@
 import { requireReservationAccess, rememberMember } from "./reservation-access";
 import { newInvitation } from "./invitation-credential";
+import { requireMember } from "./user-identity";
 import { createHash, randomUUID } from "node:crypto";
 import { z } from "zod";
 import { Prisma } from "@prisma/client";
@@ -113,6 +114,7 @@ export async function createReservation(
         "上次创建的预约已被永久删除，请核对后重新创建",
         409,
       );
+    if (data.visibility === "INVITE") await requireMember(token, tx);
     createSchema.parse(data);
     return tx.gameReservation.create({
       data: {

@@ -1,3 +1,4 @@
+import { registeredToken, browserCookie } from "../support/member";
 import "../support/isolated";
 import { test, expect } from "@playwright/test";
 import { randomBytes } from "node:crypto";
@@ -19,7 +20,7 @@ test("formal participant downloads latest calendar data without roster or creden
   page,
   context,
 }, info) => {
-  const owner = token();
+  const owner = await registeredToken();
   const input = {
     gameName: "日历测试" + token().slice(0, 6),
     hostName: "队长",
@@ -30,7 +31,7 @@ test("formal participant downloads latest calendar data without roster or creden
   const r = await createReservation(input, owner);
   try {
     await context.addCookies([
-      { name: "party_identity", value: owner, url: process.env.TEST_BASE_URL! },
+      { ...browserCookie(owner), url: process.env.TEST_BASE_URL! },
     ]);
     await page.goto(`/reservation/${r.id}`);
     await expect(
@@ -90,9 +91,9 @@ test("waiter gains calendar access only after promotion; cancellation removes it
   page,
   context,
 }) => {
-  const owner = token(),
+  const owner = await registeredToken(),
     guest = token(),
-    waiter = token();
+    waiter = await registeredToken();
   const r = await createReservation(
     {
       gameName: "候补日历",
@@ -107,8 +108,7 @@ test("waiter gains calendar access only after promotion; cancellation removes it
     await joinWaitlist(r.id, { name: "Waiter" }, waiter);
     await context.addCookies([
       {
-        name: "party_identity",
-        value: waiter,
+        ...browserCookie(waiter),
         url: process.env.TEST_BASE_URL!,
       },
     ]);

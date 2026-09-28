@@ -1,3 +1,5 @@
+import { registeredToken } from "./support/member";
+import { identityFetch as fetch } from "./support/member";
 import "./support/isolated";
 import { test, after } from "node:test";
 import assert from "node:assert/strict";
@@ -34,9 +36,9 @@ after(async () => {
 });
 
 test("calendar requires current formal membership including a promoted waiter; lifecycle disables export", async () => {
-  const host = token(),
-    guest = token(),
-    waiter = token();
+  const host = await registeredToken(),
+    guest = await registeredToken(),
+    waiter = await registeredToken();
   const data = input();
   const r = await createReservation(data, host);
   ids.push(r.id);
@@ -52,7 +54,7 @@ test("calendar requires current formal membership including a promoted waiter; l
   ]);
   for (const value of [undefined, "invalid"])
     await assert.rejects(calendarReservation(r.id, value), {
-      code: "IDENTITY_REQUIRED",
+      code: "REGISTRATION_REQUIRED",
     });
   await assert.rejects(calendarReservation(r.id, waiter), {
     code: "FORBIDDEN",
@@ -81,7 +83,7 @@ test("calendar requires current formal membership including a promoted waiter; l
 });
 
 test("calendar rejects the exact start boundary", async (t) => {
-  const host = token();
+  const host = await registeredToken();
   const r = await createReservation(input(), host);
   ids.push(r.id);
   t.mock.timers.enable({ apis: ["Date"], now: Date.parse(r.scheduledAt) });
@@ -151,16 +153,16 @@ test(
   { skip: !process.env.TEST_BASE_URL },
   async () => {
     const base = process.env.TEST_BASE_URL!,
-      owner = token(),
+      owner = await registeredToken(),
       other = token();
     const r = await createReservation(input(), owner);
     ids.push(r.id);
     const url = `${base}/api/reservations/${r.id}/calendar`;
     for (const [cookie, expected] of [
-      ["", 428],
-      ["party_identity=invalid", 428],
+      ["", 403],
+      ["party_identity=invalid", 403],
       [`party_identity=${other}`, 403],
-      [`${ADMIN_COOKIE}=${createAdminSession(1, 0)}`, 428],
+      [`${ADMIN_COOKIE}=${createAdminSession(1, 0)}`, 403],
       [`party_identity=${owner}`, 200],
     ] as const) {
       const response = await fetch(url + `?token=${owner}`, {

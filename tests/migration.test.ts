@@ -2,6 +2,38 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";
 import { readFileSync, readdirSync } from "node:fs";
+test("user-account migration preserves legacy guest ownership and creates no automatic accounts", () => {
+  const db = new DatabaseSync(":memory:");
+  try {
+    const migration = "20260928000100_user_accounts";
+    for (const name of readdirSync("prisma/migrations")
+      .filter((n) => /^\d/.test(n) && n < migration)
+      .sort())
+      db.exec(readFileSync(`prisma/migrations/${name}/migration.sql`, "utf8"));
+    db.exec(`INSERT INTO GameReservation(id,gameName,hostName,hostTokenHash,scheduledAt,maxPlayers,updatedAt,visibility,inviteHash,inviteCipher) VALUES ('r','Game','Host','guest',2000000000000,2,CURRENT_TIMESTAMP,'INVITE','hash','cipher');
+      INSERT INTO Participant(id,reservationId,name,nameKey,tokenHash,attendanceVersion) VALUES ('p','r','Host','host','guest',3);
+      INSERT INTO ReservationAccess(reservationId,tokenHash,inviteVersion,hasJoined) VALUES ('r','guest',1,1);
+      INSERT INTO CreationRequest(id,ownerTokenHash,key,inputHash,reservationId) VALUES ('c','guest','key','input','r');`);
+    const tables = [
+        "GameReservation",
+        "Participant",
+        "ReservationAccess",
+        "CreationRequest",
+      ],
+      before = tables.map((t) => db.prepare(`SELECT * FROM ${t}`).all());
+    db.exec(
+      readFileSync(`prisma/migrations/${migration}/migration.sql`, "utf8"),
+    );
+    assert.deepEqual(
+      tables.map((t) => db.prepare(`SELECT * FROM ${t}`).all()),
+      before,
+    );
+    for (const table of ["User", "UserSession", "GuestIdentity", "GuestClaim"])
+      assert.equal(db.prepare(`SELECT COUNT(*) n FROM ${table}`).get()!.n, 0);
+  } finally {
+    db.close();
+  }
+});
 test("roster management migration preserves all existing data and removes private history only on purge", () => {
   const db = new DatabaseSync(":memory:");
   try {

@@ -1,4 +1,5 @@
 import type { ZodType } from "zod";
+import { getClientIdentity, rejectStaleIdentity } from "./client-identity";
 
 type RequestOptions<T> = {
   schema?: ZodType<T>;
@@ -25,6 +26,7 @@ export async function request<T = unknown>(
   data?: unknown,
   { schema, timeoutMs = 15000, idempotencyKey }: RequestOptions<T> = {},
 ): Promise<T> {
+  const expectedIdentity = getClientIdentity()?.scope;
   const controller = new AbortController();
   const uncertain =
     method !== "GET" && method !== "HEAD"
@@ -50,6 +52,7 @@ export async function request<T = unknown>(
         method,
         headers: {
           Accept: "application/json",
+          ...(expectedIdentity ? { "X-Identity-Scope": expectedIdentity } : {}),
           ...(idempotencyKey ? { "Idempotency-Key": idempotencyKey } : {}),
           ...(data === undefined ? {} : { "Content-Type": "application/json" }),
         },
@@ -72,11 +75,25 @@ export async function request<T = unknown>(
       // Reverse proxies may return HTML; never show raw responses or parsing errors.
       if (response.ok) throw invalid(response.status);
     }
+    // A late response from an old page must not clear the new identity's draft,
+    // navigate it, or populate its private panels. Do not invalidate the new page.
+    if (getClientIdentity()?.scope !== expectedIdentity)
+      throw new ClientRequestError(
+        "身份已变化，请在原身份下核对操作结果。",
+        "HTTP",
+        409,
+        "IDENTITY_CHANGED",
+      );
     const envelope =
       result && typeof result === "object" && !Array.isArray(result)
         ? (result as Record<string, unknown>)
         : null;
     if (!response.ok) {
+      if (
+        envelope?.code === "IDENTITY_CHANGED" ||
+        envelope?.code === "USER_SESSION"
+      )
+        rejectStaleIdentity();
       const fallback =
         response.status === 401
           ? "登录已失效，请重新登录。"

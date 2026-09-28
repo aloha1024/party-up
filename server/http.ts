@@ -7,10 +7,22 @@ import { withRequestBudget } from "./request-budget";
 import { errorDiagnostics, requestContext } from "./request-log";
 import { withRequestMetrics } from "./request-metrics";
 import { readJsonBody } from "./request-body";
-const cookieName = "party_identity";
+import {
+  resolveViewer,
+  viewerContext,
+  USER_COOKIE,
+  GUEST_COOKIE,
+} from "./user-identity";
 export async function identity() {
-  const token = (await cookies()).get(cookieName)?.value;
-  return token && /^[a-f0-9]{64}$/.test(token) ? token : undefined;
+  const v = await currentViewer();
+  return v.mode === "user" && v.user?.mustChangePassword ? undefined : v.token;
+}
+export async function currentViewer() {
+  const jar = await cookies();
+  return resolveViewer(
+    jar.get(USER_COOKIE)?.value,
+    jar.get(GUEST_COOKIE)?.value,
+  );
 }
 export async function respond(
   req: NextRequest,
@@ -40,7 +52,27 @@ export async function respond(
       try {
         if (req.method !== "GET" && !isSameOrigin(req))
           throw new AppError("ORIGIN", "请求来源无效，请刷新页面重试", 403);
-        const previous = await identity();
+        const viewer = await currentViewer();
+        const previous = viewer.user?.mustChangePassword
+          ? undefined
+          : viewer.token;
+        const businessWrite =
+          req.method !== "GET" &&
+          req.nextUrl.pathname.startsWith("/api/reservations");
+        if (businessWrite) {
+          if (viewer.mode === "invalid" || viewer.user?.mustChangePassword)
+            throw new AppError(
+              "USER_SESSION",
+              "请重新登录并完成改密，或退出后使用游客模式",
+              401,
+            );
+          if (req.headers.get("x-identity-scope") !== viewer.scope)
+            throw new AppError(
+              "IDENTITY_CHANGED",
+              "页面身份已变化，请刷新后重新确认操作",
+              409,
+            );
+        }
         if (req.method !== "GET")
           limitWrite(req.headers, req.nextUrl.pathname, previous);
         if (withIdentity && req.method !== "GET" && !previous)
@@ -49,7 +81,11 @@ export async function respond(
             "请先建立浏览器报名身份后再提交",
             428,
           );
-        return send({ data: await operation(previous || "") });
+        return send({
+          data: await (businessWrite
+            ? viewerContext.run(viewer, () => operation(previous || ""))
+            : operation(previous || "")),
+        });
       } catch (error) {
         let message = "服务暂时不可用，请稍后重试";
         let status = 503;

@@ -3,9 +3,28 @@ import { randomUUID } from "node:crypto";
 
 async function source(context: BrowserContext) {
   const origin = process.env.TEST_BASE_URL!;
-  await context.request.post("/api/identity", { headers: { Origin: origin } });
+  if (
+    (await (await context.request.get("/api/identity")).json()).data.mode !==
+    "user"
+  ) {
+    const register = await context.request.post("/api/user/register", {
+      headers: { Origin: origin },
+      data: {
+        username: "copy_" + randomUUID().replaceAll("-", "").slice(0, 20),
+        password: "copy-browser-password",
+        nickname: "队长",
+      },
+    });
+    expect(register.ok()).toBe(true);
+  }
+  const scope = (await (await context.request.get("/api/identity")).json()).data
+    .scope;
   const response = await context.request.post("/api/reservations", {
-    headers: { Origin: origin, "Idempotency-Key": randomUUID() },
+    headers: {
+      Origin: origin,
+      "Idempotency-Key": randomUUID(),
+      "X-Identity-Scope": scope,
+    },
     data: {
       gameName: "Again-" + randomUUID(),
       hostName: "队长",
@@ -49,7 +68,15 @@ test("host copies configuration into a new party and lost response lookup never 
     page.getByLabel("开玩时间 · 北京时间", { exact: true }),
   ).toHaveValue("");
   expect(
-    await page.evaluate(() => sessionStorage.getItem("party-creation")),
+    await page.evaluate(() =>
+      sessionStorage.getItem(
+        Object.keys(sessionStorage).find(
+          (key) =>
+            key === "party-creation" ||
+            key.startsWith("party-creation:identity:"),
+        ) || "party-creation",
+      ),
+    ),
   ).toBeNull();
   await time(page);
   const name = "Copied-" + randomUUID();
@@ -69,7 +96,13 @@ test("host copies configuration into a new party and lost response lookup never 
     "操作可能已生效",
   );
   const submission = await page.evaluate(() =>
-    sessionStorage.getItem("party-creation"),
+    sessionStorage.getItem(
+      Object.keys(sessionStorage).find(
+        (key) =>
+          key === "party-creation" ||
+          key.startsWith("party-creation:identity:"),
+      ) || "party-creation",
+    ),
   );
   await page.getByLabel("游戏名称", { exact: true }).fill(name + "-changed");
   await page.getByRole("button", { name: "创建预约，召集队友" }).click();
@@ -77,7 +110,15 @@ test("host copies configuration into a new party and lost response lookup never 
     "上次创建结果尚未确认",
   );
   expect(
-    await page.evaluate(() => sessionStorage.getItem("party-creation")),
+    await page.evaluate(() =>
+      sessionStorage.getItem(
+        Object.keys(sessionStorage).find(
+          (key) =>
+            key === "party-creation" ||
+            key.startsWith("party-creation:identity:"),
+        ) || "party-creation",
+      ),
+    ),
   ).toBe(submission);
   await page
     .getByRole("button", { name: "查看上次创建结果", exact: true })
@@ -125,14 +166,26 @@ test("copy preserves old drafts, resets between sources and ordinary creation, a
   await page.getByLabel("游戏名称", { exact: true }).fill("未完成草稿");
   await time(page);
   const draft = await page.evaluate(() =>
-    sessionStorage.getItem("party-reservation-draft:new"),
+    sessionStorage.getItem(
+      Object.keys(sessionStorage).find(
+        (key) =>
+          key === "party-reservation-draft:new" ||
+          key.startsWith("party-reservation-draft:new:identity:"),
+      ) || "party-reservation-draft:new",
+    ),
   );
   await page.goto("/reservation/" + first.id);
   await page.getByRole("link", { name: "再开一局", exact: true }).click();
   await expect(page.getByLabel("游戏名称", { exact: true })).toBeDisabled();
   expect(
     await page.evaluate(() =>
-      sessionStorage.getItem("party-reservation-draft:new"),
+      sessionStorage.getItem(
+        Object.keys(sessionStorage).find(
+          (key) =>
+            key === "party-reservation-draft:new" ||
+            key.startsWith("party-reservation-draft:new:identity:"),
+        ) || "party-reservation-draft:new",
+      ),
     ),
   ).toBe(draft);
   await page.getByRole("button", { name: "恢复草稿", exact: true }).click();

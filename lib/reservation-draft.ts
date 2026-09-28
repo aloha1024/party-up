@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { creationInputSchema, creationFingerprint } from "./validation";
+import { scopedStorageKey, legacyStorageAllowed } from "./client-identity";
 
 const fieldsSchema = z.object({
   visibility: z.enum(["PUBLIC", "INVITE"]).optional(),
@@ -22,11 +23,21 @@ const draftSchema = z.object({
 });
 export type ReservationFields = z.infer<typeof fieldsSchema>;
 export type ReservationDraft = z.infer<typeof draftSchema>;
-const key = (id?: string) =>
+const legacyKey = (id?: string) =>
   `party-reservation-draft:${id ? "edit:" + id : "new"}`;
+const key = (id?: string) => scopedStorageKey(legacyKey(id));
 
 export function readDraft(id?: string): ReservationDraft | undefined {
   try {
+    if (
+      legacyStorageAllowed() &&
+      key(id) !== legacyKey(id) &&
+      !sessionStorage.getItem(key(id)) &&
+      sessionStorage.getItem(legacyKey(id))
+    ) {
+      sessionStorage.setItem(key(id), sessionStorage.getItem(legacyKey(id))!);
+      sessionStorage.removeItem(legacyKey(id));
+    }
     const value = draftSchema.safeParse(
       JSON.parse(sessionStorage.getItem(key(id)) || "null"),
     );
@@ -55,6 +66,7 @@ export function saveDraft(
 export function clearDraft(id?: string) {
   try {
     sessionStorage.removeItem(key(id));
+    if (legacyStorageAllowed()) sessionStorage.removeItem(legacyKey(id));
   } catch {}
 }
 export function draftMatchesVersion(

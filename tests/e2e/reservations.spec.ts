@@ -199,11 +199,25 @@ test("creation drafts recover after reload, and confirmed saves clear their loca
   await expect(page).toHaveURL(/\/reservation\/(?!new$)[a-z0-9-]+$/);
   expect(
     await page.evaluate(() =>
-      sessionStorage.getItem("party-reservation-draft:new"),
+      sessionStorage.getItem(
+        Object.keys(sessionStorage).find(
+          (key) =>
+            key === "party-reservation-draft:new" ||
+            key.startsWith("party-reservation-draft:new:identity:"),
+        ) || "party-reservation-draft:new",
+      ),
     ),
   ).toBeNull();
   expect(
-    await page.evaluate(() => sessionStorage.getItem("party-creation")),
+    await page.evaluate(() =>
+      sessionStorage.getItem(
+        Object.keys(sessionStorage).find(
+          (key) =>
+            key === "party-creation" ||
+            key.startsWith("party-creation:identity:"),
+        ) || "party-creation",
+      ),
+    ),
   ).toBeNull();
 });
 
@@ -259,7 +273,15 @@ test("a lost creation response can be looked up without submitting expired form 
   );
   expect((await listing.json()).data.total).toBe(1);
   expect(
-    await page.evaluate(() => sessionStorage.getItem("party-creation")),
+    await page.evaluate(() =>
+      sessionStorage.getItem(
+        Object.keys(sessionStorage).find(
+          (key) =>
+            key === "party-creation" ||
+            key.startsWith("party-creation:identity:"),
+        ) || "party-creation",
+      ),
+    ),
   ).toBeNull();
 });
 test("editing drafts recover only against their original version and never replace newer server values", async ({
@@ -280,7 +302,12 @@ test("editing drafts recover only against their original version and never repla
     await (await page.request.get("/api/reservations/" + id)).json()
   ).data;
   const update = await page.request.patch("/api/reservations/" + id, {
-    headers: { Origin: new URL(url).origin },
+    headers: {
+      Origin: new URL(url).origin,
+      "X-Identity-Scope": (
+        await (await page.request.get("/api/identity")).json()
+      ).data.scope,
+    },
     data: {
       gameName: current.gameName,
       hostName: current.hostName,

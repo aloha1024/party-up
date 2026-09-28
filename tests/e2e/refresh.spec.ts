@@ -82,8 +82,13 @@ test("detail refresh stays timely and preserves an unfinished nickname", async (
 }) => {
   const origin = process.env.TEST_BASE_URL!;
   await request.post("/api/identity", { headers: { Origin: origin } });
+  const scope = (await (await request.get("/api/identity")).json()).data.scope;
   const created = await request.post("/api/reservations", {
-    headers: { Origin: origin, "Idempotency-Key": randomUUID() },
+    headers: {
+      Origin: origin,
+      "Idempotency-Key": randomUUID(),
+      "X-Identity-Scope": scope,
+    },
     data: {
       gameName: "Refresh-" + randomUUID(),
       hostName: "Host",
@@ -101,7 +106,7 @@ test("detail refresh stays timely and preserves an unfinished nickname", async (
   await page.clock.pauseAt(new Date(now.getTime() + 2000));
   for (let i = 0; i < 2; i++) {
     const edited = await request.patch("/api/reservations/" + data.id, {
-      headers: { Origin: origin },
+      headers: { Origin: origin, "X-Identity-Scope": scope },
       data: {
         gameName: data.gameName,
         hostName: "Host",
@@ -132,8 +137,14 @@ test("cancellation pauses detail refresh until the operation completes", async (
 }) => {
   const origin = process.env.TEST_BASE_URL!;
   await page.request.post("/api/identity", { headers: { Origin: origin } });
+  const scope = (await (await page.request.get("/api/identity")).json()).data
+    .scope;
   const created = await page.request.post("/api/reservations", {
-    headers: { Origin: origin, "Idempotency-Key": randomUUID() },
+    headers: {
+      Origin: origin,
+      "Idempotency-Key": randomUUID(),
+      "X-Identity-Scope": scope,
+    },
     data: {
       gameName: "Cancel-refresh-" + randomUUID(),
       hostName: "Host",

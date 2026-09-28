@@ -1,3 +1,5 @@
+import { registeredToken } from "./support/member";
+import { identityFetch as fetch } from "./support/member";
 import "./support/isolated";
 import { after, test } from "node:test";
 import assert from "node:assert/strict";
@@ -20,7 +22,7 @@ after(async () => {
   await db.$disconnect();
 });
 async function fixture() {
-  const owner = randomBytes(32).toString("hex");
+  const owner = await registeredToken();
   const input = {
     gameName: "Template-" + randomUUID(),
     hostName: "队长",
@@ -45,7 +47,7 @@ test("only the original browser can copy active, full, started or cancelled rese
   assert.deepEqual(await reservationTemplate(reservation.id, owner), expected);
   for (const token of [undefined, "invalid", randomBytes(32).toString("hex")]) {
     await assert.rejects(reservationTemplate(reservation.id, token), {
-      code: "FORBIDDEN",
+      code: "REGISTRATION_REQUIRED",
     });
   }
   await joinReservation(
@@ -139,7 +141,7 @@ test(
             headers: { Cookie: cookie },
           })
         ).text();
-        assert.ok(html.includes("只有原发起人可以再开一局"));
+        assert.ok(html.includes("此功能需要注册并登录普通用户账号"));
         assert.equal(html.includes(input.gameName), false);
       }
       const own = await (
@@ -162,6 +164,7 @@ test(
       }
       const missing = await fetch(
         `${base}/reservation/new?from=${randomUUID()}`,
+        { headers: { Cookie: `party_identity=${owner}` } },
       );
       // Next can stream a not-found boundary with status 200; the noindex marker identifies it.
       assert.ok(

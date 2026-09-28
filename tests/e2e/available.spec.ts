@@ -40,10 +40,19 @@ for (const path of ["/", "/my-reservations", "/admin"]) {
         headers: { Origin: origin },
       });
       await request.post("/api/identity", { headers: { Origin: origin } });
+      const hostScope = (
+        await (await context.request.get("/api/identity")).json()
+      ).data.scope;
+      const guestScope = (await (await request.get("/api/identity")).json())
+        .data.scope;
       const q = "Seats-" + randomUUID();
       for (let i = 0; i < 3; i++) {
         const response = await context.request.post("/api/reservations", {
-          headers: { Origin: origin, "Idempotency-Key": randomUUID() },
+          headers: {
+            Origin: origin,
+            "Idempotency-Key": randomUUID(),
+            "X-Identity-Scope": hostScope,
+          },
           data: {
             gameName: `${q}-${i}`,
             hostName: "队长",
@@ -59,7 +68,10 @@ for (const path of ["/", "/my-reservations", "/admin"]) {
       const join = async (id: string) => {
         const response = await request.post(
           `/api/reservations/${id}/participants`,
-          { headers: { Origin: origin }, data: { name: "队友" } },
+          {
+            headers: { Origin: origin, "X-Identity-Scope": guestScope },
+            data: { name: "队友" },
+          },
         );
         expect(response.ok()).toBe(true);
       };
@@ -107,7 +119,7 @@ for (const path of ["/", "/my-reservations", "/admin"]) {
       ).toContainText("1 / 1");
       const left = await request.delete(
         `/api/reservations/${ids[2]}/participants`,
-        { headers: { Origin: origin } },
+        { headers: { Origin: origin, "X-Identity-Scope": guestScope } },
       );
       expect(left.ok()).toBe(true);
       await page.clock.runFor(15000);

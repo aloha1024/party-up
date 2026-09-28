@@ -3,6 +3,52 @@ import {
   decryptInvitation,
 } from "../server/invitation-credential";
 import { test } from "node:test";
+test("account backup restores credentials, sessions and guest claim state without changing legacy backup rules", () => {
+  const root = mkdtempSync(join(tmpdir(), "party-users-backup-")),
+    data = join(root, "data"),
+    backups = join(root, "backups"),
+    env = join(root, ".env");
+  mkdirSync(data);
+  writeFileSync(env, "APP_PORT=3001\n");
+  const open = () => new DatabaseSync(join(data, "reservations.db"));
+  try {
+    const db = open();
+    for (const name of readdirSync("prisma/migrations")
+      .filter((n) => /^\d/.test(n))
+      .sort())
+      db.exec(readFileSync(`prisma/migrations/${name}/migration.sql`, "utf8"));
+    db.exec(`CREATE TABLE _prisma_migrations (migration_name TEXT, checksum TEXT, finished_at TEXT, rolled_back_at TEXT);
+      INSERT INTO _prisma_migrations VALUES ('20260928000100_user_accounts','${"a".repeat(64)}','2026-09-28',NULL);
+      INSERT INTO User(id,username,nickname,passwordHash,identityKey,recoveryHash) VALUES ('u','user','User','password-hash','identity-key','recovery-hash');
+      INSERT INTO UserSession(id,userId,version,expiresAt) VALUES ('session-hash','u',0,2000000000000);
+      INSERT INTO GuestIdentity(hash,version,retired) VALUES ('guest',2,1);
+      INSERT INTO GuestClaim(id,userId,guestHash,key,inputHash,result) VALUES ('claim','u','guest','key','input','{}');`);
+    const tables = ["User", "UserSession", "GuestIdentity", "GuestClaim"],
+      before = tables.map((t) => db.prepare(`SELECT * FROM ${t}`).all());
+    db.close();
+    const snapshot = createSnapshot(data, backups, env);
+    verifySnapshot(snapshot);
+    const changed = open();
+    changed.exec(
+      "UPDATE User SET recoveryHash=NULL,isActive=0; DELETE FROM UserSession; UPDATE GuestIdentity SET retired=0",
+    );
+    changed.close();
+    restoreSnapshot(snapshot, data);
+    const restored = open();
+    assert.deepEqual(
+      tables.map((t) => restored.prepare(`SELECT * FROM ${t}`).all()),
+      before,
+    );
+    restored.exec("DROP TABLE GuestClaim");
+    restored.close();
+    assert.throws(
+      () => createSnapshot(data, backups, env),
+      /缺少注册用户数据表/,
+    );
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
 import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";
 import {

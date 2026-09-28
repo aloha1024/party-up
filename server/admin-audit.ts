@@ -13,7 +13,11 @@ export async function recordAdminAction(
       actorId: actor.id,
       actorName: actor.username,
       action,
-      targetType: action.startsWith("RESERVATION_") ? "reservation" : "admin",
+      targetType: action.startsWith("RESERVATION_")
+        ? "reservation"
+        : action.startsWith("USER_")
+          ? "user"
+          : "admin",
       targetId: target.id,
       targetLabel: target.label,
     },

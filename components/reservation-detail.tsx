@@ -1,4 +1,5 @@
 "use client";
+import { RegisteredFeature, useIdentity } from "./identity-provider";
 import { InvitationEntry, InvitationManager } from "./reservation-invitation";
 import { ReservationAttendance } from "./reservation-attendance";
 import { attendanceOpensAt } from "../lib/reservation-attendance";
@@ -40,7 +41,8 @@ export function ReservationDetail({
   removals: RemovalPage & { scope: string };
 }) {
   const router = useRouter();
-  const [name, setName] = useState("");
+  const viewer = useIdentity();
+  const [name, setName] = useState(viewer?.user?.nickname ?? "");
   const [error, setError] = useState("");
   const [pending, startTransition] = useTransition();
   const [cancelling, setCancelling] = useState(false);
@@ -132,14 +134,16 @@ export function ReservationDetail({
           <ReservationShare reservation={r} />
         )}
         {r.isHost && (
-          <Button asChild variant="outline">
-            <Link
-              href={`/reservation/new?from=${encodeURIComponent(r.id)}`}
-              prefetch={false}
-            >
-              再开一局
-            </Link>
-          </Button>
+          <RegisteredFeature label="再开一局">
+            <Button asChild variant="outline">
+              <Link
+                href={`/reservation/new?from=${encodeURIComponent(r.id)}`}
+                prefetch={false}
+              >
+                再开一局
+              </Link>
+            </Button>
+          </RegisteredFeature>
         )}
         {(r.isHost || admin) &&
           !["STARTED", "CANCELLED", "ENDED"].includes(state) && (
@@ -399,11 +403,13 @@ export function ReservationDetail({
               </p>
             )}
             {me && !["STARTED", "CANCELLED", "ENDED"].includes(state) && (
-              <ReservationCalendar
-                key={`${r.id}:${r.editVersion}`}
-                id={r.id}
-                disabled={pending || cancelling}
-              />
+              <RegisteredFeature label="添加到日历">
+                <ReservationCalendar
+                  key={`${r.id}:${r.editVersion}`}
+                  id={r.id}
+                  disabled={pending || cancelling}
+                />
+              </RegisteredFeature>
             )}
             <p className="mt-4 text-xs leading-6 text-zinc-500">
               无需注册。本浏览器会记住你的报名身份；请用同一浏览器退出接龙。

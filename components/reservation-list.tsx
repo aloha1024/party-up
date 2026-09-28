@@ -15,6 +15,7 @@ import { ArrowUpRight, Clock3, Gamepad2, Plus, Users } from "lucide-react";
 import Link from "next/link";
 
 import { Badge } from "./reservation-ui";
+import { useIdentity } from "./identity-provider";
 export function ReservationList({
   listing,
   refreshSample,
@@ -26,6 +27,7 @@ export function ReservationList({
   tab?: MyReservationTab;
   hasIdentity?: boolean;
 }) {
+  const viewer = useIdentity();
   const path = tab ? "/my-reservations" : "/";
   const labels = {
     hosted: "我发起的",
@@ -56,7 +58,9 @@ export function ReservationList({
           </h1>
           <p className="mt-3 text-sm text-zinc-400">
             {tab
-              ? "仅显示当前浏览器的记录，换设备或清除浏览器数据后无法找回。"
+              ? viewer?.mode === "user"
+                ? "显示当前账号的预约，登录同一账号可跨设备查看；游客旧记录需确认关联。"
+                : "仅显示当前浏览器的游客记录。注册登录后可确认关联，跨设备查看。"
               : "找到你的队友，让下一局准时开始。"}
           </p>
         </div>

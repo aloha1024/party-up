@@ -27,7 +27,20 @@ test("two first-use tabs keep ownership after concurrent creation", async ({
       await route.fulfill({
         status: 200,
         headers: { "Cache-Control": "no-store" },
-        json: { data: { ready: false } },
+        json: {
+          data: {
+            ready: false,
+            mode: "anonymous",
+            scope: "anonymous",
+            storageKey: "anonymous",
+            user: null,
+            capabilities: {
+              createInvitation: false,
+              copyReservation: false,
+              calendar: false,
+            },
+          },
+        },
       });
       return;
     }

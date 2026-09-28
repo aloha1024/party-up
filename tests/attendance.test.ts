@@ -1,3 +1,5 @@
+import { registeredToken } from "./support/member";
+import { identityFetch as fetch } from "./support/member";
 import "./support/isolated";
 import { test, after } from "node:test";
 import assert from "node:assert/strict";
@@ -40,7 +42,7 @@ const token = () => randomBytes(32).toString("hex");
 const ids: string[] = [];
 const actor = { id: 300001, username: "attendance-admin", sessionVersion: 0 };
 async function fixture(invite = false) {
-  const owner = token(),
+  const owner = await registeredToken(),
     guest = token();
   const input = {
     gameName: "Attendance-" + token().slice(0, 8),

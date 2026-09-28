@@ -8,9 +8,15 @@ test("personal pagination survives reload, browser back and category changes on 
   const origin = process.env.TEST_BASE_URL!;
   const q = "Paging-" + randomUUID();
   await context.request.post("/api/identity", { headers: { Origin: origin } });
+  const scope = (await (await context.request.get("/api/identity")).json()).data
+    .scope;
   for (let i = 0; i < 3; i++) {
     const response = await context.request.post("/api/reservations", {
-      headers: { Origin: origin, "Idempotency-Key": randomUUID() },
+      headers: {
+        Origin: origin,
+        "Idempotency-Key": randomUUID(),
+        "X-Identity-Scope": scope,
+      },
       data: {
         gameName: `${q}-${i}`,
         hostName: "队长",
@@ -62,8 +68,13 @@ test("my reservations separates browser identities and preserves category, filte
   const origin = process.env.TEST_BASE_URL!;
   const game = "Mine-" + randomUUID();
   await request.post("/api/identity", { headers: { Origin: origin } });
+  const scope = (await (await request.get("/api/identity")).json()).data.scope;
   const response = await request.post("/api/reservations", {
-    headers: { Origin: origin, "Idempotency-Key": randomUUID() },
+    headers: {
+      Origin: origin,
+      "Idempotency-Key": randomUUID(),
+      "X-Identity-Scope": scope,
+    },
     data: {
       gameName: game,
       hostName: "Host",

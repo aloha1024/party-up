@@ -53,7 +53,9 @@ export function routeLabel(path: string) {
       part !== "submission"
         ? ":id"
         : index === 4 &&
-            ["reservations", "accounts", "trash"].includes(path.split("/")[3])
+            ["reservations", "accounts", "users", "trash"].includes(
+              path.split("/")[3],
+            )
           ? ":id"
           : part,
     )

@@ -6,6 +6,7 @@ import { Loader2, Zap } from "lucide-react";
 
 import { Back, Field } from "./reservation-ui";
 import { useReservationForm } from "./use-reservation-form";
+import { useIdentity } from "./identity-provider";
 export function CreateForm({
   reservation: initialReservation,
   template,
@@ -13,6 +14,7 @@ export function CreateForm({
   reservation?: Reservation;
   template?: ReservationTemplate;
 }) {
+  const identity = useIdentity();
   const {
     reservation,
     conflict,
@@ -151,7 +153,12 @@ export function CreateForm({
                 value={field("visibility").value ?? "PUBLIC"}
               >
                 <option value="PUBLIC">公开预约</option>
-                <option value="INVITE">邀请制预约</option>
+                <option
+                  value="INVITE"
+                  disabled={!identity?.capabilities.createInvitation}
+                >
+                  邀请制预约（需登录）
+                </option>
               </select>
               <p className="mt-2 text-xs text-zinc-400">
                 创建后不可切换。邀请制预约不在公共大厅显示。

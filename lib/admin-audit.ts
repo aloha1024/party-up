@@ -1,5 +1,9 @@
 import { z } from "zod";
 export const auditActions = [
+  "USER_ENABLE",
+  "USER_DISABLE",
+  "USER_REVOKE_SESSIONS",
+  "USER_RESET_PASSWORD",
   "RESERVATION_EDIT",
   "RESERVATION_END",
   "RESERVATION_REOPEN",
@@ -18,6 +22,10 @@ export const auditActions = [
 ] as const;
 export type AuditAction = (typeof auditActions)[number];
 export const auditLabels: Record<AuditAction, string> = {
+  USER_ENABLE: "启用普通账号",
+  USER_DISABLE: "停用普通账号",
+  USER_REVOKE_SESSIONS: "撤销普通账号登录",
+  USER_RESET_PASSWORD: "重置普通账号密码",
   RESERVATION_INVITE_ROTATE: "更换邀请链接",
   RESERVATION_END: "结束预约",
   RESERVATION_REOPEN: "撤销结束",

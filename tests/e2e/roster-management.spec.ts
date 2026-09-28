@@ -71,7 +71,7 @@ test("host and roster members rename; removing a participant promotes waitlist a
     await page.reload();
     await page
       .locator("li")
-      .filter({ has: page.getByText("NewGuest", { exact: true }) })
+      .filter({ hasText: "NewGuest" })
       .getByRole("button", { name: "移除", exact: true })
       .click();
     const removeDialog = page.getByRole("dialog", {
@@ -265,7 +265,9 @@ test("a lost removal response keeps the reason and retry cannot remove a rejoine
     page.once("dialog", (prompt) => prompt.accept());
     await dialog.getByRole("button", { name: "确认移除" }).click();
     await expect(dialog).toHaveCount(0);
-    await expect(page.getByText("GuestAgain", { exact: true })).toBeVisible();
+    await expect(
+      page.locator("li").filter({ hasText: "GuestAgain" }),
+    ).toBeVisible();
     expect((await detail(r.id, guest)).participants.some((p) => p.isMe)).toBe(
       true,
     );

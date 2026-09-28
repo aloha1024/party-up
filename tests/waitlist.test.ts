@@ -1,3 +1,4 @@
+import { registeredToken } from "./support/member";
 import "./support/isolated";
 import { test, after } from "node:test";
 import assert from "node:assert/strict";
@@ -29,8 +30,8 @@ const ids: string[] = [];
 const actor = { id: 2, username: "waitlist-admin" };
 const code = (expected: string) => (e: unknown) =>
   e instanceof AppError && e.code === expected;
-async function fixture() {
-  const host = token(),
+async function fixture(member = false) {
+  const host = member ? await registeredToken() : token(),
     guest = token();
   const input = {
     gameName: "候补测试" + token().slice(0, 6),
@@ -312,7 +313,7 @@ test("concurrent enqueue, leave/join, expansion/enqueue and promotion/queue-exit
 });
 
 test("host rename checks both rosters, copy excludes queues, purge removes queued rows", async () => {
-  const { id, host, input } = await fixture();
+  const { id, host, input } = await fixture(true);
   const next = token();
   await joinWaitlist(id, { name: "Next" }, next);
   await leaveReservation(id, host);

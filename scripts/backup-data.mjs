@@ -133,6 +133,22 @@ function validateDatabase(directory) {
           throw new Error("备份缺少到场或结束状态字段");
       }
     }
+    if (migrations.some((row) => row.name === "20260928000100_user_accounts")) {
+      for (const table of [
+        "User",
+        "UserSession",
+        "GuestIdentity",
+        "GuestClaim",
+      ])
+        if (
+          !db
+            .prepare(
+              "SELECT name FROM sqlite_master WHERE type='table' AND name=?",
+            )
+            .get(table)
+        )
+          throw new Error("备份缺少注册用户数据表");
+    }
     return migrations;
   } finally {
     db.close();

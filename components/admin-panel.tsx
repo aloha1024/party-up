@@ -27,7 +27,7 @@ export function AdminPanel({
   authenticated: boolean;
   reservations: ReservationSummary[];
   listing?: ReservationPage;
-  view?: "reservations" | "password" | "accounts" | "trash" | "audit";
+  view?: "reservations" | "password" | "accounts" | "trash" | "audit" | "users";
   canCreateAdmins?: boolean;
   children?: ReactNode;
   refreshSample?: string;
@@ -122,9 +122,11 @@ export function AdminPanel({
               ? "回收站"
               : view === "accounts"
                 ? "管理员账号"
-                : view === "password"
-                  ? "修改管理员密码"
-                  : "预约管理"}
+                : view === "users"
+                  ? "普通账号"
+                  : view === "password"
+                    ? "修改管理员密码"
+                    : "预约管理"}
         </h1>
         {authenticated && (
           <Button
@@ -162,6 +164,9 @@ export function AdminPanel({
             >
               修改密码
             </Link>
+          </Button>
+          <Button asChild variant={view === "users" ? "default" : "outline"}>
+            <Link href="/admin/users">普通账号</Link>
           </Button>
           {canCreateAdmins && (
             <Button
@@ -255,7 +260,10 @@ export function AdminPanel({
         </form>
       ) : (
         <div className="space-y-6">
-          {view === "accounts" || view === "trash" || view === "audit" ? (
+          {view === "accounts" ||
+          view === "trash" ||
+          view === "audit" ||
+          view === "users" ? (
             children
           ) : view === "password" ? (
             <form className="panel space-y-5 p-6" onSubmit={changePassword}>

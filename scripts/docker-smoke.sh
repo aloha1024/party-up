@@ -55,13 +55,14 @@ if ! "${compose[@]}" up -d "${startup_flags[@]}" --wait --wait-timeout 120; then
   exit 1
 fi
 wait_for_health startup
-curl --fail --silent --show-error --connect-timeout 3 --max-time 15 -X POST -H "Origin: $origin" -c "$scratch/cookies" "$origin/api/identity" >/dev/null
+curl --fail --silent --show-error --connect-timeout 3 --max-time 15 -X POST -H "Origin: $origin" -c "$scratch/cookies" "$origin/api/identity" > "$scratch/identity.json"
+scope="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["data"]["scope"])' "$scratch/identity.json")"
 future="$(date -u -d '+2 days' +%Y-%m-%dT%H:%M:%SZ)"
 printf '{"gameName":"Container smoke","hostName":"Host","scheduledAt":"%s","maxPlayers":3}' "$future" > "$scratch/create.json"
-curl --fail --silent --show-error --connect-timeout 3 --max-time 15 -H "Origin: $origin" -H 'Content-Type: application/json' -H 'Idempotency-Key: docker-smoke-test-key' -b "$scratch/cookies" --data-binary "@$scratch/create.json" "$origin/api/reservations" > "$scratch/first.json"
+curl --fail --silent --show-error --connect-timeout 3 --max-time 15 -H "Origin: $origin" -H "X-Identity-Scope: $scope" -H 'Content-Type: application/json' -H 'Idempotency-Key: docker-smoke-test-key' -b "$scratch/cookies" --data-binary "@$scratch/create.json" "$origin/api/reservations" > "$scratch/first.json"
 "${compose[@]}" restart web >/dev/null
 wait_for_health restart
-curl --fail --silent --show-error --connect-timeout 3 --max-time 15 -H "Origin: $origin" -H 'Content-Type: application/json' -H 'Idempotency-Key: docker-smoke-test-key' -b "$scratch/cookies" --data-binary "@$scratch/create.json" "$origin/api/reservations" > "$scratch/repeated.json"
+curl --fail --silent --show-error --connect-timeout 3 --max-time 15 -H "Origin: $origin" -H "X-Identity-Scope: $scope" -H 'Content-Type: application/json' -H 'Idempotency-Key: docker-smoke-test-key' -b "$scratch/cookies" --data-binary "@$scratch/create.json" "$origin/api/reservations" > "$scratch/repeated.json"
 python3 - "$scratch" <<'PY'
 import json,sys,pathlib
 p=pathlib.Path(sys.argv[1])

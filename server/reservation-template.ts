@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { db } from "./db";
+import { requireMember, validIdentity } from "./user-identity";
 import { AppError } from "./errors";
 import { reservationTemplateSourceSchema } from "../lib/reservation-template";
 import type { ReservationTemplate } from "../types/reservation";
@@ -8,6 +9,7 @@ export async function reservationTemplate(
   source: string,
   token?: string,
 ): Promise<ReservationTemplate> {
+  await requireMember(token);
   const id = reservationTemplateSourceSchema.parse(source);
   const row = await db.gameReservation.findUnique({
     where: { id, deletedAt: null },
@@ -22,8 +24,7 @@ export async function reservationTemplate(
   });
   if (!row) throw new AppError("NOT_FOUND", "预约不存在或已被移除", 404);
   if (
-    !token ||
-    !/^[a-f0-9]{64}$/.test(token) ||
+    !validIdentity(token) ||
     row.hostTokenHash !== createHash("sha256").update(token).digest("hex")
   ) {
     throw new AppError(
