@@ -2,7 +2,7 @@ import { requireReservationAccess } from "./reservation-access";
 import { db } from "./db";
 import { requireMember } from "./user-identity";
 import { AppError } from "./errors";
-import { hashToken } from "./reservations";
+import { hashToken } from "./hash-token";
 import type { CalendarReservation } from "../lib/reservation-calendar";
 
 export async function calendarReservation(

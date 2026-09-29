@@ -1,5 +1,5 @@
 import { db } from "./db";
-import { hashToken } from "./reservations";
+import { hashToken } from "./hash-token";
 import { AppError } from "./errors";
 import { creationKeySchema } from "../lib/creation-result";
 

@@ -1,7 +1,7 @@
 import { createHash, timingSafeEqual } from "node:crypto";
 import { z } from "zod";
 import { db } from "./db";
-import { mutate } from "./reservations";
+import { mutate } from "./reservation-transaction";
 import { identityHash } from "./reservation-access";
 import { newInvitation, decryptInvitation } from "./invitation-credential";
 import { AppError } from "./errors";

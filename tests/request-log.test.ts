@@ -89,6 +89,65 @@ test("error diagnostics allow only safe relative locations and ignore exception 
   );
 });
 
+test("refactored reservation modules expose exact relative locations without leaking sensitive diagnostics", (t) => {
+  const root = process.cwd().replaceAll("\\", "/");
+  const secret = "private-cookie-password-sql";
+  const modules = [
+    "hash-token",
+    "reservation-record",
+    "reservation-detail",
+    "reservation-transaction",
+  ];
+  const lines: string[] = [];
+  t.mock.method(console, "error", (line: string) => lines.push(line));
+
+  for (const module of modules) {
+    const relative = `server/${module}.ts:42:8`;
+    const absolute = `${root}/${relative}`;
+    for (const location of [absolute, absolute.replaceAll("/", "\\")]) {
+      const error = new TypeError(secret);
+      error.stack = `TypeError: ${secret}\n    at ${secret} (${location})`;
+      const diagnostics = errorDiagnostics(error);
+      assert.equal(diagnostics.errorLocation, relative);
+      assert.match(diagnostics.errorFingerprint, /^[a-f0-9]{16}$/);
+      requestContext("GET", "/api/reservations/private-id").finish(
+        500,
+        "INTERNAL",
+        diagnostics,
+      );
+      const line = lines.at(-1)!;
+      assert.equal(JSON.parse(line).errorLocation, relative);
+      for (const excluded of [
+        secret,
+        root,
+        root.replaceAll("/", "\\"),
+        "private-id",
+      ])
+        assert.equal(line.includes(excluded), false);
+    }
+
+    for (const location of [
+      `${root}/server/private-${module}.ts:42:8`,
+      `${root}/server/${module}-private.ts:42:8`,
+      `${root}/server/${module}.ts.private:42:8`,
+      `${root}/server/${module}.ts?${secret}:42:8`,
+      `${root}/server/private/${module}.ts:42:8`,
+      `/another-project/server/${module}.ts:42:8`,
+      `C:\\another-project\\server\\${module}.ts:42:8`,
+    ]) {
+      const error = new Error(secret);
+      error.stack = `Error: ${secret}\n    at ${secret} (${location})`;
+      const diagnostics = errorDiagnostics(error);
+      assert.equal(diagnostics.errorLocation, undefined, location);
+      assert.equal(JSON.stringify(diagnostics).includes(secret), false);
+    }
+
+    const error = new Error(`${secret} ${absolute}`);
+    error.stack = `Error: ${secret} ${absolute}\n    at unknown (/private/unknown.ts:1:1)`;
+    assert.equal(errorDiagnostics(error).errorLocation, undefined);
+  }
+});
+
 test("transaction metrics are isolated across overlapping requests and absent outside requests", async () => {
   assert.equal(requestMetrics(), undefined);
   assert.equal(await measureTransaction(async () => 7), 7);

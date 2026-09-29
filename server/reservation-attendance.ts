@@ -4,7 +4,8 @@ import {
   completionSchema,
 } from "../lib/reservation-attendance";
 import { requireReservationAccess, identityHash } from "./reservation-access";
-import { mutate, detail } from "./reservations";
+import { mutate } from "./reservation-transaction";
+import { detail } from "./reservation-detail";
 import { AppError } from "./errors";
 import { recordAdminAction, type AuditActor } from "./admin-audit";
 

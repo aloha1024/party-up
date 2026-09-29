@@ -17,7 +17,7 @@ export function errorDiagnostics(error: unknown) {
   let errorLocation: string | undefined;
   const root = process.cwd().replaceAll("\\", "/") + "/";
   const source =
-    /^(?:server\/(?:http|request-body|request-budget|request-log|request-metrics|reservations|reservation-list|reservation-trash|admin|admin-auth|admin-accounts|admin-audit|admin-audit-list|creation-result|db|database-config|rate-limit)\.ts|lib\/(?:validation|reservation-list|reservation-trash|admin-audit)\.ts|\.next\/server\/chunks\/(?:ssr\/)?(?:\[root-of-the-server\]__)?[a-f0-9]+(?:\._)?\.js)$/;
+    /^(?:server\/(?:http|request-body|request-budget|request-log|request-metrics|reservations|reservation-list|reservation-trash|reservation-record|reservation-detail|reservation-transaction|hash-token|admin|admin-auth|admin-accounts|admin-audit|admin-audit-list|creation-result|db|database-config|rate-limit)\.ts|lib\/(?:validation|reservation-list|reservation-trash|admin-audit)\.ts|\.next\/server\/chunks\/(?:ssr\/)?(?:\[root-of-the-server\]__)?[a-f0-9]+(?:\._)?\.js)$/;
   if (error instanceof Error && typeof error.stack === "string") {
     for (const frame of error.stack.split("\n").slice(1, 21)) {
       if (!/^\s+at /.test(frame)) continue;

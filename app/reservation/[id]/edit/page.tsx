@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import { CreateForm } from "@/components/reservation-form";
-import { detail, AppError } from "@/server/reservations";
+import { detail } from "@/server/reservation-detail";
+import { AppError } from "@/server/errors";
 import { pageIdentity } from "@/server/page-identity";
 import { isAdmin } from "@/server/admin";
 export const dynamic = "force-dynamic";

@@ -12,7 +12,7 @@ import {
   readAdminSession,
   verifyPasswordHash,
 } from "./admin-auth";
-import { AppError } from "./reservations";
+import { AppError } from "./errors";
 
 const ADMIN_ID = 1;
 

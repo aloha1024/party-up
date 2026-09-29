@@ -4,7 +4,7 @@ import { db } from "./db";
 import { recordAdminAction } from "./admin-audit";
 import { requireAccountOwner } from "./admin";
 import { hashPassword } from "./admin-auth";
-import { AppError } from "./reservations";
+import { AppError } from "./errors";
 
 const actionSchema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("disable") }).strict(),

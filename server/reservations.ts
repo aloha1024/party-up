@@ -1,15 +1,13 @@
 import { requireReservationAccess, rememberMember } from "./reservation-access";
 import { newInvitation } from "./invitation-credential";
 import { requireMember } from "./user-identity";
-import { createHash, randomUUID } from "node:crypto";
+import { randomUUID } from "node:crypto";
+import { hashToken } from "./hash-token";
+export { hashToken } from "./hash-token";
 import { z } from "zod";
-import { Prisma } from "@prisma/client";
+import type { Prisma } from "@prisma/client";
 import { db } from "./db";
-import {
-  readReservationHistory,
-  recordReservationEdit,
-} from "./reservation-history";
-import { readRosterRemovals, type ViewerAdmin } from "./roster-removals";
+import { recordReservationEdit } from "./reservation-history";
 import {
   renameSchema,
   removalSchema,
@@ -27,94 +25,16 @@ import { getStatus } from "../lib/status";
 import { recruitmentClosure, deadlineError } from "../lib/recruitment";
 import { AppError } from "./errors";
 export { AppError } from "./errors";
-import { remainingBudget, writeTransaction } from "./request-budget";
-import { measureTransaction } from "./request-metrics";
-export const hashToken = (token: string) =>
-  createHash("sha256").update(token).digest("hex");
-const include = {
-  waitlist: { orderBy: { id: "asc" as const } },
-  participants: {
-    orderBy: [{ joinedAt: "asc" as const }, { id: "asc" as const }],
-  },
-};
-type Row = Prisma.GameReservationGetPayload<{ include: typeof include }>;
-function serialize(r: Row, token?: string) {
-  return {
-    id: r.id,
-    visibility: r.visibility as "PUBLIC" | "INVITE",
-    editVersion: r.editVersion,
-    endedAt: r.endedAt?.toISOString() ?? null,
-    gameName: r.gameName,
-    hostName: r.hostName,
-    isHost: !!token && r.hostTokenHash === hashToken(token),
-    scheduledAt: r.scheduledAt.toISOString(),
-    registrationDeadline: r.registrationDeadline?.toISOString() ?? null,
-    recruitmentPaused: r.recruitmentPaused,
-    maxPlayers: r.maxPlayers,
-    description: r.description,
-    status: getStatus(r, r.participants.length),
-    cancellationReason: r.cancellationReason,
-    waitlist: r.waitlist.map((p) => ({
-      isHost: p.tokenHash === r.hostTokenHash,
-      id: p.id,
-      name: p.name,
-      joinedAt: p.joinedAt.toISOString(),
-      isMe: !!token && p.tokenHash === hashToken(token),
-    })),
-    participants: r.participants.map((p) => ({
-      checkedInAt: p.checkedInAt?.toISOString() ?? null,
-      attendanceVersion: p.attendanceVersion,
-      isHost: p.tokenHash === r.hostTokenHash,
-      id: p.id,
-      name: p.name,
-      joinedAt: p.joinedAt.toISOString(),
-      isMe: !!token && p.tokenHash === hashToken(token),
-    })),
-  };
-}
-export async function detail(id: string, token?: string, admin = false) {
-  return db.$transaction(async (tx) => {
-    const r = await tx.gameReservation.findUnique({ where: { id }, include });
-    if (!r || r.deletedAt)
-      throw new AppError("NOT_FOUND", "预约不存在或已被移除", 404);
-    await requireReservationAccess(tx, r, token, admin);
-    return serialize(r, token);
-  });
-}
-
-// The page's detail and first history pages share one authorized read snapshot.
-// Independent APIs and write transactions continue to authorize every request.
-export async function reservationPageData(
-  id: string,
-  token?: string,
-  admin: ViewerAdmin = null,
-) {
-  const budget = Math.floor(remainingBudget());
-  if (budget < 2) throw new AppError("BUSY", "服务繁忙，请稍后重试", 503);
-  return measureTransaction(() =>
-    db.$transaction(
-      async (tx) => {
-        const r = await tx.gameReservation.findUnique({
-          where: { id },
-          include,
-        });
-        if (!r || r.deletedAt)
-          throw new AppError("NOT_FOUND", "预约不存在或已被移除", 404);
-        await requireReservationAccess(tx, r, token, !!admin);
-        const reservation = serialize(r, token);
-        const history = await readReservationHistory(tx, id);
-        const removals = await readRosterRemovals(tx, r, token, admin);
-        return { reservation, history, removals };
-      },
-      {
-        isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
-        maxWait: Math.max(1, Math.min(1000, Math.floor(budget / 4))),
-        timeout: Math.max(1, Math.min(3000, Math.floor(budget * 0.7))),
-      },
-    ),
-  );
-}
-
+import { writeTransaction } from "./request-budget";
+import { detail } from "./reservation-detail";
+import { mutate } from "./reservation-transaction";
+import {
+  reservationInclude as include,
+  serializeReservation as serialize,
+  type ReservationRow as Row,
+} from "./reservation-record";
+export { detail, reservationPageData } from "./reservation-detail";
+export { mutate } from "./reservation-transaction";
 export async function createReservation(
   input: unknown,
   token: string,
@@ -191,33 +111,6 @@ export async function createReservation(
   }, true);
   return serialize(r, token);
 }
-// The first operation is a write: SQLite acquires its writer lock; PostgreSQL locks
-// this reservation row. Every roster mutation uses this same lock, before reads.
-export async function mutate(
-  id: string,
-  operation: (tx: Prisma.TransactionClient, r: Row) => Promise<void>,
-  includeDeleted = false,
-) {
-  try {
-    return await writeTransaction(async (tx) => {
-      const locked = await tx.gameReservation.updateMany({
-        where: { id, ...(includeDeleted ? {} : { deletedAt: null }) },
-        data: { revision: { increment: 1 } },
-      });
-      if (!locked.count) throw new AppError("NOT_FOUND", "预约不存在", 404);
-      const r = (await tx.gameReservation.findUnique({
-        where: { id },
-        include,
-      }))!;
-      await operation(tx, r);
-    });
-  } catch (e) {
-    if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002")
-      throw new AppError("DUPLICATE", "该昵称已被使用，或你已经报名", 409);
-    throw e;
-  }
-}
-
 function checkActive(r: Row) {
   const state = getStatus(r, r.participants.length);
   if (state === "CANCELLED") throw new AppError("CANCELLED", "预约已取消", 409);

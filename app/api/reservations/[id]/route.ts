@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { body, respond } from "@/server/http";
-import { detail, editReservation } from "@/server/reservations";
+import { detail } from "@/server/reservation-detail";
+import { editReservation } from "@/server/reservations";
 import { currentAdmin } from "@/server/admin";
 export const GET = (
   req: NextRequest,

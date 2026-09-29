@@ -3,7 +3,7 @@ import { cookies } from "next/headers";
 import { NextRequest } from "next/server";
 import { z } from "zod";
 import { body, respond } from "@/server/http";
-import { AppError } from "@/server/reservations";
+import { AppError } from "@/server/errors";
 import {
   requireAdmin,
   replaceAdminPassword,
