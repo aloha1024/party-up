@@ -45,6 +45,11 @@ export function errorDiagnostics(error: unknown) {
 
 // Never include query strings, cookies, submitted values, or exception messages.
 export function routeLabel(path: string) {
+  if (
+    path.startsWith("/api/user/sessions/") &&
+    path !== "/api/user/sessions/all"
+  )
+    return "/api/user/sessions/:id";
   return path
     .split("/")
     .map((part, index) =>

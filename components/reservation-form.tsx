@@ -109,6 +109,7 @@ export function CreateForm({
                 value={[
                   `游戏名称：${recoverable.fields.gameName}`,
                   `开玩时间：${recoverable.fields.date} ${recoverable.fields.time}`,
+                  `报名截止：${recoverable.fields.deadline || "开局前均可报名"}`,
                   `发起人昵称：${recoverable.fields.hostName}`,
                   `最大参与人数：${recoverable.fields.maxPlayers}`,
                   `备注：${recoverable.fields.description}`,
@@ -186,6 +187,15 @@ export function CreateForm({
               <Input type="time" {...field("time")} required />
             </Field>
           </div>
+          <Field title="报名截止时间 · 北京时间（选填）">
+            <Input type="datetime-local" step="1" {...field("deadline")} />
+          </Field>
+          <p className="text-sm text-zinc-400">
+            留空表示开局前均可报名。截止后停止新报名、新候补和自动递补；改期不会自动移动截止时间。
+            {reservation?.recruitmentPaused
+              ? "当前已暂停招募，调整截止时间后仍需在详情页恢复招募。"
+              : ""}
+          </p>
           <div className="grid gap-5 sm:grid-cols-2">
             <Field title="发起人昵称">
               <Input

@@ -3,6 +3,7 @@ import { test, expect } from "@playwright/test";
 import { randomUUID } from "node:crypto";
 import { db } from "../../server/db";
 import { createAdminSession } from "../../server/admin-auth";
+import { ensureAdminRecord } from "../../server/admin";
 
 test.afterAll(() => db.$disconnect());
 test("a regular administrator can reset an ordinary user, requiring a new password before profile editing", async ({
@@ -17,6 +18,8 @@ test("a regular administrator can reset an ordinary user, requiring a new passwo
     data: { username: name, nickname: "旧昵称", password },
   });
   expect(registered.ok()).toBeTruthy();
+  // This spec also runs alone: reserve the bootstrap account before creating a manager.
+  await ensureAdminRecord();
   const admin = await db.adminCredential.create({
     data: {
       username: "manager_" + randomUUID().slice(0, 8),

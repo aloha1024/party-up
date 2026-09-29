@@ -149,6 +149,40 @@ function validateDatabase(directory) {
         )
           throw new Error("备份缺少注册用户数据表");
     }
+    if (
+      migrations.some((row) => row.name === "20260929000100_session_management")
+    ) {
+      const columns = new Set(
+        db
+          .prepare('PRAGMA table_info("UserSession")')
+          .all()
+          .map((row) => row.name),
+      );
+      if (
+        ["publicId", "createdAt", "browser", "os"].some(
+          (field) => !columns.has(field),
+        )
+      )
+        throw new Error("备份缺少登录会话管理字段");
+    }
+    if (migrations.some((row) => row.name === "20260930000100_recruitment")) {
+      for (const [table, fields] of [
+        ["GameReservation", ["registrationDeadline", "recruitmentPaused"]],
+        [
+          "ReservationChange",
+          ["registrationDeadlineBefore", "registrationDeadlineAfter"],
+        ],
+      ]) {
+        const columns = new Set(
+          db
+            .prepare(`PRAGMA table_info("${table}")`)
+            .all()
+            .map((row) => row.name),
+        );
+        if (fields.some((field) => !columns.has(field)))
+          throw new Error("备份缺少招募管理字段");
+      }
+    }
     return migrations;
   } finally {
     db.close();

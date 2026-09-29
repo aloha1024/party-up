@@ -18,6 +18,8 @@ const select = {
   gameName: true,
   hostName: true,
   scheduledAt: true,
+  registrationDeadline: true,
+  recruitmentPaused: true,
   maxPlayers: true,
   status: true,
   _count: { select: { participants: true } },
@@ -155,6 +157,9 @@ async function queryReservations(
             gameName: row.gameName,
             hostName: row.hostName,
             scheduledAt: row.scheduledAt.toISOString(),
+            registrationDeadline:
+              row.registrationDeadline?.toISOString() ?? null,
+            recruitmentPaused: row.recruitmentPaused,
             maxPlayers: row.maxPlayers,
             participantCount: row._count.participants,
             status: getStatus(row, row._count.participants, now),
@@ -182,6 +187,8 @@ async function availableReservations(
     Prisma.sql`r."deletedAt" IS NULL`,
     Prisma.sql`r."status" NOT IN ('CANCELLED', 'ENDED')`,
     Prisma.sql`r."scheduledAt" > ${now.getTime()}`,
+    Prisma.sql`r."recruitmentPaused" = false`,
+    Prisma.sql`(r."registrationDeadline" IS NULL OR r."registrationDeadline" > ${now.getTime()})`,
     Prisma.sql`(SELECT COUNT(*) FROM "Participant" p WHERE p."reservationId" = r."id") < r."maxPlayers"`,
   ];
   if (publicOnly) conditions.push(Prisma.sql`r."visibility" = 'PUBLIC'`);
@@ -237,6 +244,9 @@ async function availableReservations(
               gameName: row.gameName,
               hostName: row.hostName,
               scheduledAt: row.scheduledAt.toISOString(),
+              registrationDeadline:
+                row.registrationDeadline?.toISOString() ?? null,
+              recruitmentPaused: row.recruitmentPaused,
               maxPlayers: row.maxPlayers,
               participantCount: row._count.participants,
               status: getStatus(row, row._count.participants, now),

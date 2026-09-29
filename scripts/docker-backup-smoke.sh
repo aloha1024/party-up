@@ -40,14 +40,16 @@ try {
   const root=await db.adminCredential.findUniqueOrThrow({where:{id:1}});
   await db.adminCredential.create({data:{username:'ci-backup-admin',passwordHash:root.passwordHash,mustChangePassword:false}});
   const reservation=await db.gameReservation.findFirstOrThrow();
+  const deadlineBefore=new Date(reservation.scheduledAt.getTime()-7200000);
+  const deadlineAfter=new Date(reservation.scheduledAt.getTime()-3600000);
   await db.waitlistEntry.create({data:{reservationId:reservation.id,name:'Backup waiter',nameKey:'backup waiter',tokenHash:'ci-backup-waiter'}});
-  await db.reservationChange.create({data:{reservationId:reservation.id,action:'EDIT',actorRole:'HOST',fields:'["maxPlayers"]',maxPlayersBefore:2,maxPlayersAfter:3}});
+  await db.reservationChange.create({data:{reservationId:reservation.id,action:'EDIT',actorRole:'HOST',fields:'["maxPlayers","registrationDeadline"]',maxPlayersBefore:2,maxPlayersAfter:3,registrationDeadlineBefore:deadlineBefore,registrationDeadlineAfter:deadlineAfter}});
   await db.participant.updateMany({where:{reservationId:reservation.id},data:{checkedInAt:new Date(),attendanceVersion:1}});
-  await db.gameReservation.update({where:{id:reservation.id},data:{status:'ENDED',endedAt:new Date()}});
+  await db.gameReservation.update({where:{id:reservation.id},data:{status:'ENDED',endedAt:new Date(),registrationDeadline:deadlineAfter,recruitmentPaused:true}});
   await db.reservationAccess.create({data:{reservationId:reservation.id,tokenHash:'ci-invite-member',inviteVersion:1,hasJoined:true}});
   await db.rosterRemoval.create({data:{reservationId:reservation.id,kind:'participants',entryId:'removed-fixture',targetName:'Removed fixture',targetTokenHash:'removed-fixture-hash',reason:'Fixture reason',actorRole:'HOST'}});
   const user=await db.user.create({data:{username:'ci-backup-user',nickname:'Backup user',passwordHash:root.passwordHash,recoveryHash:'ci-recovery-hash'}});
-  await db.userSession.create({data:{id:'ci-session-hash',userId:user.id,version:0,expiresAt:new Date(Date.now()+86400000)}});
+  await db.userSession.create({data:{id:'ci-session-hash',userId:user.id,version:0,expiresAt:new Date(Date.now()+86400000),createdAt:new Date(),browser:'Firefox',os:'Linux'}});
   await db.guestIdentity.create({data:{hash:'ci-retired-guest',version:2,retired:true}});
   await db.guestClaim.create({data:{userId:user.id,guestHash:'ci-retired-guest',key:'ci-claim-key',inputHash:'ci-input-hash',result:'{}'}});
 } finally {await db.$disconnect();}
@@ -85,7 +87,7 @@ import {readFileSync,writeFileSync} from 'node:fs';
 const db=new PrismaClient();
 try {
   const reservation=await db.gameReservation.findFirstOrThrow();
-  await db.gameReservation.update({where:{id:reservation.id},data:{gameName:'Changed after backup',description:'Restore should remove this',status:'OPEN',endedAt:null}});
+  await db.gameReservation.update({where:{id:reservation.id},data:{gameName:'Changed after backup',description:'Restore should remove this',status:'OPEN',endedAt:null,registrationDeadline:null,recruitmentPaused:false}});
   await db.participant.updateMany({where:{reservationId:reservation.id},data:{checkedInAt:null,attendanceVersion:{increment:1}}});
   await db.participant.create({data:{reservationId:reservation.id,name:'Added after backup',nameKey:'added after backup',tokenHash:randomBytes(32).toString('hex')}});
   await db.waitlistEntry.deleteMany({where:{reservationId:reservation.id}});
@@ -116,7 +118,15 @@ before=json.loads((root/'before.json').read_text())
 changed=json.loads((root/'changed.json').read_text())
 restored=json.loads((root/'restored.json').read_text())
 assert before!=changed,'Mutation must change data before restore'
-assert before==restored,'Restoration must preserve reservations, participants, waitlist, admin credentials and creation identities'
+recruitment=next(r for r in before['reservations'] if r['recruitmentPaused'] and r['registrationDeadline'])
+history=next(h for h in recruitment['changes'] if 'registrationDeadline' in json.loads(h['fields']))
+assert history['registrationDeadlineBefore'] and history['registrationDeadlineAfter']==recruitment['registrationDeadline'],'Fixture must contain non-default deadline history'
+changed_recruitment=next(r for r in changed['reservations'] if r['id']==recruitment['id'])
+assert changed_recruitment['registrationDeadline'] is None and not changed_recruitment['recruitmentPaused'] and not changed_recruitment['changes'],'Mutation must remove recruitment settings and history'
+session=next(u for u in before['users'] if u['username']=='ci-backup-user')['sessions'][0]
+assert session['publicId'] and session['createdAt'] and session['browser']=='Firefox' and session['os']=='Linux','Fixture must contain non-default session metadata'
+assert not next(u for u in changed['users'] if u['username']=='ci-backup-user')['sessions'],'Mutation must remove session metadata'
+assert before==restored,'Restoration must preserve reservations, recruitment settings and history, participants, waitlist, sessions, admin credentials and creation identities'
 assert (root/'deployment/.env').read_bytes()==(root/'env').read_bytes(),'Server environment must be restored'
 assert list((root/'backups').glob('pre-restore-*')),'Recovery snapshot must exist'
 PYCODE
@@ -130,4 +140,4 @@ container="$("${fixture[@]}" ps -a -q web)"
 bash scripts/wait-for-web.sh --env-file "$deployment/.env" -p "$project" -f "$deployment/compose.yaml"
 capture_state > "$scratch/restored-stopped.json"
 cmp "$scratch/restored.json" "$scratch/restored-stopped.json"
-echo 'Docker backup/restore preserved reservations, participants, administrators, credentials, configuration and stopped state'
+echo 'Docker backup/restore preserved reservations, recruitment settings and history, participants, session metadata, administrators, credentials, configuration and stopped state'

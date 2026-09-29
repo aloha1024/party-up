@@ -24,6 +24,7 @@ import {
   joinSchema,
 } from "../lib/validation";
 import { getStatus } from "../lib/status";
+import { recruitmentClosure, deadlineError } from "../lib/recruitment";
 import { AppError } from "./errors";
 export { AppError } from "./errors";
 import { remainingBudget, writeTransaction } from "./request-budget";
@@ -47,6 +48,8 @@ function serialize(r: Row, token?: string) {
     hostName: r.hostName,
     isHost: !!token && r.hostTokenHash === hashToken(token),
     scheduledAt: r.scheduledAt.toISOString(),
+    registrationDeadline: r.registrationDeadline?.toISOString() ?? null,
+    recruitmentPaused: r.recruitmentPaused,
     maxPlayers: r.maxPlayers,
     description: r.description,
     status: getStatus(r, r.participants.length),
@@ -155,6 +158,8 @@ export async function createReservation(
       );
     if (data.visibility === "INVITE") await requireMember(token, tx);
     createSchema.parse(data);
+    const error = deadlineError(data.scheduledAt, data.registrationDeadline);
+    if (error) throw new AppError("VALIDATION", error, 400);
     return tx.gameReservation.create({
       data: {
         ...data,
@@ -221,6 +226,77 @@ function checkActive(r: Row) {
   if (state === "STARTED")
     throw new AppError("STARTED", "游戏已开始，不能修改报名", 409);
 }
+function checkRecruitment(r: Row) {
+  const closed = recruitmentClosure(r);
+  if (closed)
+    throw new AppError(
+      "RECRUITMENT_CLOSED",
+      `${closed}，暂不接受报名或候补`,
+      409,
+    );
+}
+
+export async function setRecruitment(
+  id: string,
+  input: unknown,
+  token: string,
+  administrator: AuditActor | null = null,
+) {
+  const data = z
+    .object({
+      paused: z.boolean(),
+      editVersion: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER),
+    })
+    .strict()
+    .parse(input);
+  await mutate(id, async (tx, r) => {
+    if (!administrator && r.hostTokenHash !== hashToken(token))
+      throw new AppError(
+        "FORBIDDEN",
+        "只有发起人或已登录的管理员可以管理招募",
+        403,
+      );
+    checkActive(r);
+    if (r.editVersion !== data.editVersion)
+      throw new AppError(
+        "EDIT_CONFLICT",
+        "预约已被修改，请刷新后重新确认",
+        409,
+      );
+    if (
+      !data.paused &&
+      r.registrationDeadline &&
+      r.registrationDeadline <= new Date()
+    )
+      throw new AppError(
+        "RECRUITMENT_CLOSED",
+        "报名已截止，请先编辑预约延后或清除截止时间",
+        409,
+      );
+    if (r.recruitmentPaused === data.paused) return;
+    await tx.gameReservation.update({
+      where: { id },
+      data: { recruitmentPaused: data.paused, editVersion: { increment: 1 } },
+    });
+    if (!data.paused) await promoteWaitlist(tx, id);
+    await tx.reservationChange.create({
+      data: {
+        reservationId: id,
+        action: data.paused ? "PAUSE" : "RESUME",
+        actorRole: administrator ? "ADMIN" : "HOST",
+        fields: "[]",
+      },
+    });
+    if (administrator)
+      await recordAdminAction(
+        tx,
+        administrator,
+        data.paused ? "RESERVATION_PAUSE" : "RESERVATION_RESUME",
+        { id, label: r.gameName },
+      );
+  });
+  return detail(id, token, !!administrator);
+}
 // Called only after mutate acquires the reservation write lock. Re-read the
 // roster after edits/removals; any later failure rolls these promotions back.
 async function promoteWaitlist(tx: Prisma.TransactionClient, id: string) {
@@ -231,7 +307,8 @@ async function promoteWaitlist(tx: Prisma.TransactionClient, id: string) {
   if (
     r.deletedAt ||
     ["CANCELLED", "ENDED"].includes(r.status) ||
-    r.scheduledAt <= new Date()
+    r.scheduledAt <= new Date() ||
+    recruitmentClosure(r)
   )
     return;
   const vacancies = r.maxPlayers - r._count.participants;
@@ -272,6 +349,7 @@ export async function joinWaitlist(id: string, input: unknown, token: string) {
   await mutate(id, async (tx, r) => {
     await requireReservationAccess(tx, r, token, false, true);
     checkActive(r);
+    checkRecruitment(r);
     await rememberMember(tx, r, token);
     checkDuplicate(r, name, token);
     if (r.participants.length < r.maxPlayers)
@@ -311,6 +389,7 @@ export async function joinReservation(
   await mutate(id, async (tx, r) => {
     await requireReservationAccess(tx, r, token, false, true);
     checkActive(r);
+    checkRecruitment(r);
     await rememberMember(tx, r, token);
     await promoteWaitlist(tx, id);
     if (
@@ -388,7 +467,12 @@ export async function renameRosterEntry(
       await recordReservationEdit(
         tx,
         r,
-        { ...r, scheduledAt: r.scheduledAt.toISOString(), hostName: data.name },
+        {
+          ...r,
+          scheduledAt: r.scheduledAt.toISOString(),
+          registrationDeadline: r.registrationDeadline?.toISOString() ?? null,
+          hostName: data.name,
+        },
         false,
       );
     }
@@ -497,6 +581,16 @@ export async function editReservation(
       );
     // Revalidate time after acquiring the lock, in case this request waited.
     createSchema.parse(data);
+    const deadline =
+      data.registrationDeadline === undefined
+        ? (r.registrationDeadline?.toISOString() ?? null)
+        : data.registrationDeadline;
+    const error = deadlineError(
+      data.scheduledAt,
+      deadline,
+      r.registrationDeadline?.toISOString(),
+    );
+    if (error) throw new AppError("VALIDATION", error, 400);
     if (data.maxPlayers < r.participants.length)
       throw new AppError("CAPACITY", "人数上限不能小于当前报名人数", 409);
     const host = r.participants.find((p) => p.tokenHash === r.hostTokenHash);
@@ -537,6 +631,7 @@ export async function editReservation(
       data: {
         ...data,
         scheduledAt: new Date(data.scheduledAt),
+        registrationDeadline: deadline ? new Date(deadline) : null,
         editVersion: { increment: 1 },
       },
     });
@@ -546,7 +641,12 @@ export async function editReservation(
         id,
         label: data.gameName,
       });
-    await recordReservationEdit(tx, r, data, administrator !== null);
+    await recordReservationEdit(
+      tx,
+      r,
+      { ...data, registrationDeadline: deadline },
+      administrator !== null,
+    );
   });
   return detail(id, token, !!administrator);
 }

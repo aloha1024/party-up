@@ -8,30 +8,32 @@ datasource db {
 }
 
 model GameReservation {
-  id                 String              @id @default(cuid())
-  gameName           String
-  hostName           String
-  hostTokenHash      String?
-  scheduledAt        DateTime
-  maxPlayers         Int
-  description        String              @default("")
-  status             String              @default("OPEN")
-  endedAt            DateTime?
-  deletedAt          DateTime?
-  cancellationReason String              @default("")
-  revision           Int                 @default(0)
-  editVersion        Int                 @default(0)
-  createdAt          DateTime            @default(now())
-  updatedAt          DateTime            @updatedAt
-  participants       Participant[]
-  waitlist           WaitlistEntry[]
-  changes            ReservationChange[]
-  removals           RosterRemoval[]
-  visibility         String              @default("PUBLIC")
-  inviteVersion      Int                 @default(1)
-  inviteHash         String?
-  inviteCipher       String?
-  access             ReservationAccess[]
+  id                   String              @id @default(cuid())
+  gameName             String
+  hostName             String
+  hostTokenHash        String?
+  scheduledAt          DateTime
+  registrationDeadline DateTime?
+  recruitmentPaused    Boolean             @default(false)
+  maxPlayers           Int
+  description          String              @default("")
+  status               String              @default("OPEN")
+  endedAt              DateTime?
+  deletedAt            DateTime?
+  cancellationReason   String              @default("")
+  revision             Int                 @default(0)
+  editVersion          Int                 @default(0)
+  createdAt            DateTime            @default(now())
+  updatedAt            DateTime            @updatedAt
+  participants         Participant[]
+  waitlist             WaitlistEntry[]
+  changes              ReservationChange[]
+  removals             RosterRemoval[]
+  visibility           String              @default("PUBLIC")
+  inviteVersion        Int                 @default(1)
+  inviteHash           String?
+  inviteCipher         String?
+  access               ReservationAccess[]
 
   @@index([scheduledAt])
   @@index([deletedAt, scheduledAt, id])
@@ -56,17 +58,19 @@ model RosterRemoval {
 }
 
 model ReservationChange {
-  id                Int             @id @default(autoincrement())
-  reservationId     String
-  action            String
-  actorRole         String
-  fields            String
-  scheduledAtBefore DateTime?
-  scheduledAtAfter  DateTime?
-  maxPlayersBefore  Int?
-  maxPlayersAfter   Int?
-  createdAt         DateTime        @default(now())
-  reservation       GameReservation @relation(fields: [reservationId], references: [id], onDelete: Cascade)
+  id                         Int             @id @default(autoincrement())
+  reservationId              String
+  action                     String
+  actorRole                  String
+  fields                     String
+  scheduledAtBefore          DateTime?
+  scheduledAtAfter           DateTime?
+  registrationDeadlineBefore DateTime?
+  registrationDeadlineAfter  DateTime?
+  maxPlayersBefore           Int?
+  maxPlayersAfter            Int?
+  createdAt                  DateTime        @default(now())
+  reservation                GameReservation @relation(fields: [reservationId], references: [id], onDelete: Cascade)
 
   @@index([reservationId, id])
 }
@@ -168,11 +172,15 @@ model User {
 }
 
 model UserSession {
-  id        String   @id
+  id        String    @id
+  publicId  String    @unique @default(uuid())
   userId    String
   version   Int
   expiresAt DateTime
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime?
+  browser   String?
+  os        String?
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
   @@index([expiresAt])

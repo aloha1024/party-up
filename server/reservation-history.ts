@@ -13,7 +13,7 @@ import { measureTransaction } from "./request-metrics";
 type Editable = Pick<
   GameReservation,
   "gameName" | "hostName" | "description" | "maxPlayers"
-> & { scheduledAt: string };
+> & { scheduledAt: string; registrationDeadline?: string | null };
 
 export async function recordReservationEdit(
   tx: Prisma.TransactionClient,
@@ -22,9 +22,15 @@ export async function recordReservationEdit(
   admin: boolean,
 ) {
   const fields = changeFields.filter((field) =>
-    field === "scheduledAt"
-      ? before.scheduledAt.getTime() !== new Date(after.scheduledAt).getTime()
-      : before[field] !== after[field],
+    field === "registrationDeadline"
+      ? after.registrationDeadline !== undefined &&
+        (before.registrationDeadline?.toISOString() ?? null) !==
+          (after.registrationDeadline
+            ? new Date(after.registrationDeadline).toISOString()
+            : null)
+      : field === "scheduledAt"
+        ? before.scheduledAt.getTime() !== new Date(after.scheduledAt).getTime()
+        : before[field] !== after[field],
   );
   if (!fields.length) return;
   await tx.reservationChange.create({
@@ -33,6 +39,14 @@ export async function recordReservationEdit(
       action: "EDIT",
       actorRole: admin ? "ADMIN" : "HOST",
       fields: JSON.stringify(fields),
+      ...(fields.includes("registrationDeadline")
+        ? {
+            registrationDeadlineBefore: before.registrationDeadline,
+            registrationDeadlineAfter: after.registrationDeadline
+              ? new Date(after.registrationDeadline)
+              : null,
+          }
+        : {}),
       ...(fields.includes("scheduledAt")
         ? {
             scheduledAtBefore: before.scheduledAt,
@@ -113,6 +127,10 @@ export async function readReservationHistory(
       fields: JSON.parse(row.fields),
       scheduledAtBefore: row.scheduledAtBefore?.toISOString() ?? null,
       scheduledAtAfter: row.scheduledAtAfter?.toISOString() ?? null,
+      registrationDeadlineBefore:
+        row.registrationDeadlineBefore?.toISOString() ?? null,
+      registrationDeadlineAfter:
+        row.registrationDeadlineAfter?.toISOString() ?? null,
       maxPlayersBefore: row.maxPlayersBefore,
       maxPlayersAfter: row.maxPlayersAfter,
       createdAt: row.createdAt.toISOString(),

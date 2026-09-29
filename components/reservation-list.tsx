@@ -1,4 +1,5 @@
 "use client";
+import { recruitmentClosure, recruitmentWakeups } from "../lib/recruitment";
 import {
   ReservationFilters,
   ReservationPagination,
@@ -39,7 +40,7 @@ export function ReservationList({
     sample: refreshSample,
     data: { listing, tab, hasIdentity },
     scope: JSON.stringify([path, tab, listing.filters]),
-    scheduledAt: listing.items.map((r) => r.scheduledAt),
+    scheduledAt: listing.items.flatMap(recruitmentWakeups),
   });
   const reservations = listing.items;
   const filtered = !!(
@@ -149,7 +150,7 @@ export function ReservationList({
                     className="text-zinc-500 group-hover:text-lime-300"
                   />
                 </div>
-                {r.status === "OPEN" && (
+                {r.status === "OPEN" && !recruitmentClosure(r) && (
                   <p className="mt-3 text-xs text-lime-300">
                     还可报名 {Math.max(0, r.maxPlayers - r.participantCount)} 人
                   </p>

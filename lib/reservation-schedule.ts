@@ -75,6 +75,7 @@ export function scheduleWakeups(page: SchedulePage) {
     ...(page.nearest ? [page.nearest.scheduledAt] : []),
     ...page.items.flatMap((r) => [
       r.scheduledAt,
+      ...(r.registrationDeadline ? [r.registrationDeadline] : []),
       ...(r.isParticipant && r.attendance !== "closed"
         ? [new Date(Date.parse(r.scheduledAt) - 30 * 60000).toISOString()]
         : []),

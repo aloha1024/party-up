@@ -182,6 +182,8 @@ test("list pagination crosses the upcoming/past boundary without duplicates, exp
     "id",
     "maxPlayers",
     "participantCount",
+    "recruitmentPaused",
+    "registrationDeadline",
     "scheduledAt",
     "status",
     "visibility",

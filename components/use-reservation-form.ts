@@ -21,6 +21,7 @@ import {
   type ReservationFields,
 } from "@/lib/reservation-draft";
 import { createSchema, creationFingerprint } from "@/lib/validation";
+import { deadlineError } from "../lib/recruitment";
 import type { Reservation, ReservationTemplate } from "@/types/reservation";
 import { useRouter } from "next/navigation";
 import {
@@ -62,6 +63,11 @@ export function useReservationForm(
         "",
       date: localTime.slice(0, 10),
       time: localTime.slice(11, 16),
+      deadline: reservation?.registrationDeadline
+        ? new Date(Date.parse(reservation.registrationDeadline) + 8 * 3600000)
+            .toISOString()
+            .slice(0, 19)
+        : "",
       maxPlayers: String(reservation?.maxPlayers ?? template?.maxPlayers ?? 5),
       description: reservation?.description ?? template?.description ?? "",
     };
@@ -80,7 +86,7 @@ export function useReservationForm(
   }, [reservation]);
   const field = (name: keyof ReservationFields) => ({
     name,
-    value: fields[name],
+    value: fields[name] ?? "",
     onChange: (
       event: ChangeEvent<
         HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement
@@ -140,9 +146,19 @@ export function useReservationForm(
     event.preventDefault();
     if (!draftReady || recoverable || pending || conflict) return;
     setError("");
-    const parsed = createSchema.safeParse(creationInputFromFields(fields));
+    const input = creationInputFromFields(fields, reservation);
+    const parsed = createSchema.safeParse(input);
     if (!parsed.success) {
       setError(parsed.error.issues[0].message);
+      return;
+    }
+    const cutoffError = deadlineError(
+      parsed.data.scheduledAt,
+      parsed.data.registrationDeadline,
+      reservation?.registrationDeadline,
+    );
+    if (cutoffError) {
+      setError(cutoffError);
       return;
     }
     startTransition(async () => {
@@ -163,6 +179,9 @@ export function useReservationForm(
                   creationFingerprint({ ...parsed.data, visibility: "PUBLIC" }),
                 ),
                 editVersion: reservation.editVersion,
+                ...(parsed.data.registrationDeadline !== undefined
+                  ? { registrationDeadline: parsed.data.registrationDeadline }
+                  : {}),
               }
             : parsed.data,
           {

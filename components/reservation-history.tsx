@@ -27,6 +27,7 @@ const labels = {
   description: "备注",
   scheduledAt: "开玩时间",
   maxPlayers: "人数上限",
+  registrationDeadline: "报名截止时间",
 };
 
 export function ReservationHistory({
@@ -140,6 +141,8 @@ export function ReservationHistory({
                     CANCEL: "预约已取消",
                     END: "预约已结束",
                     REOPEN: "已撤销结束",
+                    PAUSE: "已暂停招募",
+                    RESUME: "已恢复招募",
                   }[item.action]
                 }
               </p>
@@ -152,9 +155,11 @@ export function ReservationHistory({
                     item.scheduledAtBefore &&
                     item.scheduledAtAfter
                       ? `${time(item.scheduledAtBefore)} → ${time(item.scheduledAtAfter)}`
-                      : field === "maxPlayers"
-                        ? `${item.maxPlayersBefore} 人 → ${item.maxPlayersAfter} 人`
-                        : "已修改"}
+                      : field === "registrationDeadline"
+                        ? `${item.registrationDeadlineBefore ? time(item.registrationDeadlineBefore) : "开局前均可报名"} → ${item.registrationDeadlineAfter ? time(item.registrationDeadlineAfter) : "开局前均可报名"}`
+                        : field === "maxPlayers"
+                          ? `${item.maxPlayersBefore} 人 → ${item.maxPlayersAfter} 人`
+                          : "已修改"}
                   </li>
                 ))}
               </ul>

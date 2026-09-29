@@ -21,20 +21,33 @@ import {
 import { previewGuestClaim, claimGuestRecords } from "@/server/guest-claims";
 import { limiter, requestSource } from "@/server/rate-limit";
 import { AppError } from "@/server/errors";
+import { listUserSessions, revokeUserSession } from "@/server/user-sessions";
 type Context = { params: Promise<{ action: string[] }> };
 async function route(req: NextRequest, context: Context) {
   return respond(
     req,
     async (_token, viewer) => {
-      const action = (await context.params).action.join("/"),
+      const segments = (await context.params).action;
+      const action = segments.join("/"),
         method = req.method;
+      const singleSession =
+        method === "DELETE" &&
+        segments.length === 2 &&
+        segments[0] === "sessions" &&
+        segments[1] !== "all";
+      const rateAction = singleSession ? "sessions/revoke" : action;
       const jar = await cookies();
       if (method === "GET") {
         if (action === "session") return publicViewer(viewer);
         if (action === "guest-claims") return previewGuestClaim(viewer);
+        if (action === "sessions") {
+          const pages = req.nextUrl.searchParams.getAll("page");
+          return listUserSessions(viewer, pages.length > 1 ? pages : pages[0]);
+        }
         throw new AppError("NOT_FOUND", "接口不存在", 404);
       }
       if (
+        !singleSession &&
         ![
           "POST register",
           "POST session",
@@ -50,8 +63,9 @@ async function route(req: NextRequest, context: Context) {
         throw new AppError("NOT_FOUND", "接口不存在", 404);
       const input = method === "DELETE" ? {} : await body(req);
       const source = requestSource(req.headers);
-      limiter.take(`user:${action}:global`, 120);
-      if (source) limiter.take(`user:${action}:source:${digest(source)}`, 20);
+      limiter.take(`user:${rateAction}:global`, 120);
+      if (source)
+        limiter.take(`user:${rateAction}:source:${digest(source)}`, 20);
       const username =
         input &&
         typeof input === "object" &&
@@ -61,7 +75,7 @@ async function route(req: NextRequest, context: Context) {
           : viewer.user?.username;
       if (username)
         limiter.take(
-          `user:${action}:account:${digest(username)}`,
+          `user:${rateAction}:account:${digest(username)}`,
           action === "session" ? 20 : 5,
         );
       const publicAction =
@@ -84,7 +98,10 @@ async function route(req: NextRequest, context: Context) {
             "请先退出当前账号再注册",
             409,
           );
-        const { token, recoveryCode } = await registerUser(input);
+        const { token, recoveryCode } = await registerUser(
+          input,
+          req.headers.get("user-agent"),
+        );
         setSession(token);
         return {
           recoveryCode,
@@ -92,7 +109,10 @@ async function route(req: NextRequest, context: Context) {
         };
       }
       if (action === "session" && method === "POST") {
-        const { token, mustChangePassword } = await loginUser(input);
+        const { token, mustChangePassword } = await loginUser(
+          input,
+          req.headers.get("user-agent"),
+        );
         if (viewer.sessionHash)
           await db.userSession.deleteMany({
             where: { id: viewer.sessionHash },
@@ -133,6 +153,11 @@ async function route(req: NextRequest, context: Context) {
       if (action === "sessions/all" && method === "DELETE") {
         const result = await revokeUserSessions(viewer);
         jar.delete(USER_COOKIE);
+        return result;
+      }
+      if (singleSession) {
+        const result = await revokeUserSession(viewer, segments[1]);
+        if (result.current) jar.delete(USER_COOKIE);
         return result;
       }
       if (action === "guest-claims" && method === "POST")

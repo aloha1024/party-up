@@ -70,7 +70,7 @@ export function ReservationFilters({
         <select name="view" className="field" defaultValue={filters.view}>
           <option value="all">全部预约</option>
           <option value="upcoming">未开始（含满员）</option>
-          <option value="available">有空位（未开始）</option>
+          <option value="available">可报名（有空位）</option>
           <option value="started">已开始（未结束）</option>
           <option value="ended">已结束</option>
           <option value="cancelled">已取消</option>

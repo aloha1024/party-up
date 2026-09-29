@@ -1,5 +1,6 @@
 import type { Reservation } from "@/types/reservation";
 import { getStatus, statusLabels } from "./status";
+import { recruitmentClosure } from "./recruitment";
 
 export function reservationShareText(
   r: Reservation,
@@ -20,7 +21,9 @@ export function reservationShareText(
     "发起人：" + r.hostName,
     "开玩时间：" + time + "（北京时间 UTC+8）",
     "已接龙人数：" + r.participants.length + " / " + r.maxPlayers + " 人",
-    "当前状态：" + statusLabels[getStatus(r, r.participants.length, now)],
+    "当前状态：" +
+      (recruitmentClosure(r, now) ||
+        statusLabels[getStatus(r, r.participants.length, now)]),
     ...(r.status === "CANCELLED" && r.cancellationReason
       ? ["取消原因：" + r.cancellationReason]
       : []),

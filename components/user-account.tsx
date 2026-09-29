@@ -12,6 +12,7 @@ import {
 } from "../lib/client-identity";
 import { safeReturnPath, type PublicIdentity } from "../lib/user-account";
 import { readSubmission } from "../lib/creation-submission";
+import { UserSessions } from "./user-sessions";
 
 function Password({
   name = "password",
@@ -51,6 +52,7 @@ export function UserAccount({
     [error, setError] = useState(""),
     [message, setMessage] = useState(""),
     [code, setCode] = useState("");
+  const [sessionsPending, setSessionsPending] = useState(false);
   const navigate = (path = "/account", broadcast = true) => {
     if (broadcast) notifyIdentityChanged();
     window.location.assign(path);
@@ -100,7 +102,10 @@ export function UserAccount({
           : "个人账号";
   return (
     <section className="mx-auto max-w-xl">
-      <fieldset disabled={!hydrated || pending} className="min-w-0 space-y-6">
+      <fieldset
+        disabled={!hydrated || pending || sessionsPending}
+        className="min-w-0 space-y-6"
+      >
         <h1 className="text-3xl font-bold">{title}</h1>
         <p className="text-sm text-zinc-400">
           游客可公开组局、报名和候补。注册后可跨设备使用、创建邀请预约、再开一局和下载日历。
@@ -271,6 +276,11 @@ export function UserAccount({
                   <Button disabled={pending}>生成恢复码</Button>
                 </form>
                 <GuestClaims />
+                <UserSessions
+                  key={viewer.scope}
+                  scope={viewer.scope}
+                  onPendingChange={setSessionsPending}
+                />
                 <Button
                   variant="outline"
                   disabled={pending}

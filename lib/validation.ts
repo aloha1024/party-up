@@ -10,6 +10,11 @@ export const creationInputSchema = z.object({
   gameName: text(80),
   hostName: nickname,
   scheduledAt: z.string().datetime({ offset: true, message: "请选择有效时间" }),
+  registrationDeadline: z
+    .string()
+    .datetime({ offset: true, message: "请选择有效的报名截止时间" })
+    .nullable()
+    .optional(),
   maxPlayers: z
     .number()
     .int()
@@ -36,8 +41,11 @@ export const editSchema = createSchema.omit({ visibility: true }).extend({
 
 // Preserve the pre-invitation public submission fingerprint, including key order.
 export function creationFingerprint(data: z.infer<typeof creationInputSchema>) {
-  const { visibility, ...legacy } = data;
-  return JSON.stringify(
-    visibility === "INVITE" ? { ...legacy, visibility } : legacy,
-  );
+  const { visibility, registrationDeadline, ...legacy } = data;
+  return JSON.stringify({
+    ...(visibility === "INVITE" ? { ...legacy, visibility } : legacy),
+    ...(registrationDeadline
+      ? { registrationDeadline: new Date(registrationDeadline).toISOString() }
+      : {}),
+  });
 }

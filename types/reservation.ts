@@ -12,6 +12,8 @@ export type Reservation = {
   editVersion: number;
   endedAt?: string | null;
   scheduledAt: string;
+  registrationDeadline?: string | null;
+  recruitmentPaused?: boolean;
   maxPlayers: number;
   description: string;
   status: Status;
@@ -40,6 +42,8 @@ export type ReservationSummary = Pick<
   | "gameName"
   | "hostName"
   | "scheduledAt"
+  | "registrationDeadline"
+  | "recruitmentPaused"
   | "maxPlayers"
   | "status"
   | "visibility"

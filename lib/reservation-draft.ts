@@ -7,6 +7,7 @@ const fieldsSchema = z.object({
   gameName: z.string().max(80),
   date: z.string().max(32),
   time: z.string().max(32),
+  deadline: z.string().max(40).optional(),
   hostName: z.string().max(24),
   maxPlayers: z.string().max(32),
   description: z.string().max(1000),
@@ -76,13 +77,46 @@ export function draftMatchesVersion(
   return draft.editVersion === editVersion;
 }
 
-export function creationInputFromFields(fields: ReservationFields) {
-  const date = new Date(`${fields.date}T${fields.time}:00+08:00`);
+export function creationInputFromFields(
+  fields: ReservationFields,
+  original?: { scheduledAt: string; registrationDeadline?: string | null },
+) {
+  let date = new Date(`${fields.date}T${fields.time}:00+08:00`);
+  let deadline = fields.deadline ? new Date(`${fields.deadline}+08:00`) : null;
+  // Editing unrelated fields must not truncate API-created times or turn an
+  // unchanged cutoff equal to the start into one after the start.
+  if (original) {
+    const local = new Date(
+      Date.parse(original.scheduledAt) + 8 * 3600000,
+    ).toISOString();
+    if (
+      fields.date === local.slice(0, 10) &&
+      fields.time === local.slice(11, 16)
+    )
+      date = new Date(original.scheduledAt);
+    if (
+      original.registrationDeadline &&
+      fields.deadline ===
+        new Date(Date.parse(original.registrationDeadline) + 8 * 3600000)
+          .toISOString()
+          .slice(0, 19)
+    )
+      deadline = new Date(original.registrationDeadline);
+  }
   return {
     visibility: fields.visibility ?? "PUBLIC",
     gameName: fields.gameName,
     hostName: fields.hostName,
     scheduledAt: isNaN(date.getTime()) ? "" : date.toISOString(),
+    ...(fields.deadline !== undefined
+      ? {
+          registrationDeadline: deadline
+            ? isNaN(deadline.getTime())
+              ? ""
+              : deadline.toISOString()
+            : null,
+        }
+      : {}),
     maxPlayers: Number(fields.maxPlayers),
     description: fields.description,
   };

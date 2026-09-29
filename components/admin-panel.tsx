@@ -1,4 +1,5 @@
 "use client";
+import { recruitmentClosure, recruitmentWakeups } from "../lib/recruitment";
 import { z } from "zod";
 import { request } from "@/lib/client-request";
 import { FormEvent, type ReactNode, useState, useTransition } from "react";
@@ -38,7 +39,7 @@ export function AdminPanel({
     sample: refreshSample,
     data: { listing, canCreateAdmins, authenticated },
     scope: JSON.stringify(listing?.filters),
-    scheduledAt: reservations.map((r) => r.scheduledAt),
+    scheduledAt: reservations.flatMap(recruitmentWakeups),
     enabled: authenticated && view === "reservations",
     paused: pending,
   });
@@ -348,7 +349,7 @@ export function AdminPanel({
                     <p className="mt-2 text-sm text-zinc-400">
                       {formatTime(r.scheduledAt)} · {r.hostName} ·{" "}
                       {r.participantCount}/{r.maxPlayers} 人
-                      {r.status === "OPEN" && (
+                      {r.status === "OPEN" && !recruitmentClosure(r) && (
                         <span className="ml-3 text-lime-300">
                           还可报名{" "}
                           {Math.max(0, r.maxPlayers - r.participantCount)} 人

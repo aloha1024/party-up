@@ -193,6 +193,8 @@ test("upgrade retains reservations, roster, root and moderator credentials with 
         inviteVersion: 1,
         inviteHash: null,
         inviteCipher: null,
+        registrationDeadline: null,
+        recruitmentPaused: 0,
       },
     );
     assert.deepEqual(

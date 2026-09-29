@@ -2,6 +2,8 @@
 import { RegisteredFeature, useIdentity } from "./identity-provider";
 import { InvitationEntry, InvitationManager } from "./reservation-invitation";
 import { ReservationAttendance } from "./reservation-attendance";
+import { ReservationRecruitment } from "./reservation-recruitment";
+import { recruitmentClosure } from "../lib/recruitment";
 import { attendanceOpensAt } from "../lib/reservation-attendance";
 import { CancelReservation } from "@/components/cancel-reservation";
 import { ReservationShare } from "@/components/reservation-share";
@@ -51,6 +53,7 @@ export function ReservationDetail({
   const [attending, setAttending] = useState(false);
   const [inviting, setInviting] = useState(false);
   const [managing, setManaging] = useState(false);
+  const [recruiting, setRecruiting] = useState(false);
   const [action, setAction] = useState<RosterAction | null>(null);
   useEffect(() => {
     setAction(null);
@@ -62,14 +65,17 @@ export function ReservationDetail({
     scheduledAt: [
       attendanceOpensAt(r.scheduledAt).toISOString(),
       r.scheduledAt,
+      ...(r.registrationDeadline ? [r.registrationDeadline] : []),
     ],
-    paused: pending || cancelling || managing || inviting || attending,
+    paused:
+      pending || cancelling || managing || inviting || attending || recruiting,
     fixed: true,
   });
   const me = r.participants.find((p) => p.isMe);
   const waitingIndex = r.waitlist.findIndex((p) => p.isMe);
   const state = getStatus(r, r.participants.length);
-  const canWait = state === "FULL" && r.waitlist.length < 100;
+  const closed = recruitmentClosure(r);
+  const canWait = !closed && state === "FULL" && r.waitlist.length < 100;
   function mutate(method: "POST" | "DELETE", queue = false) {
     setError("");
     if (method === "POST") {
@@ -164,6 +170,41 @@ export function ReservationDetail({
         admin={admin}
         onPendingChange={setAttending}
       />
+      {(r.isHost || admin) &&
+        !["STARTED", "CANCELLED", "ENDED"].includes(state) && (
+          <div className="mb-6">
+            <ReservationRecruitment
+              reservation={r}
+              disabled={
+                pending || cancelling || managing || inviting || attending
+              }
+              onPendingChange={setRecruiting}
+            />
+          </div>
+        )}
+      {(closed || r.registrationDeadline || r.recruitmentPaused) && (
+        <div role="status" className="panel mb-6 space-y-2 p-5">
+          {closed && (
+            <h2 className="font-semibold">
+              {closed}
+              {r.recruitmentPaused && closed === "报名已截止"
+                ? " · 暂停招募"
+                : ""}
+            </h2>
+          )}
+          <p className="text-sm text-zinc-400">
+            报名截止：
+            {r.registrationDeadline
+              ? `${formatTime(r.registrationDeadline)}（北京时间）`
+              : "开局前均可报名"}
+          </p>
+          {closed && (
+            <p className="text-sm text-zinc-400">
+              新报名、新候补和自动递补已停止，已有名单与候补顺序保留。重新开放后按顺序递补。
+            </p>
+          )}
+        </div>
+      )}
       {state === "CANCELLED" && (
         <div role="status" className="panel mb-6 p-5">
           <h2 className="font-semibold">预约已取消</h2>
@@ -223,7 +264,7 @@ export function ReservationDetail({
                   )}
               </li>
             ))}
-            {state === "OPEN" && (
+            {state === "OPEN" && !closed && (
               <li className="flex items-center gap-4 rounded-xl border border-dashed border-white/10 p-4 text-sm text-zinc-500">
                 <span className="w-5">
                   {String(r.participants.length + 1).padStart(2, "0")}
@@ -234,7 +275,7 @@ export function ReservationDetail({
                 等一位一起开黑的队友
               </li>
             )}
-            {!r.participants.length && state !== "OPEN" && (
+            {!r.participants.length && (state !== "OPEN" || closed) && (
               <li className="p-4 text-zinc-500">暂无参与者</li>
             )}
           </ol>
@@ -247,7 +288,7 @@ export function ReservationDetail({
                 候补名单 · {r.waitlist.length} 人
               </h2>
               <p className="mt-2 text-xs text-zinc-400">
-                候补不是正式报名。有空位时将按顺序自动转为正式报名。
+                候补不是正式报名。招募开放且有空位时将按顺序自动转为正式报名。
                 不发送外部通知，请留意最新名单。
               </p>
               <ol className="mt-4 space-y-3">
@@ -263,7 +304,9 @@ export function ReservationDetail({
                         ? "预约已取消"
                         : ["STARTED", "ENDED"].includes(state)
                           ? "未递补"
-                          : "候补中"}
+                          : closed
+                            ? "递补已暂停"
+                            : "候补中"}
                     </span>
                     {!["STARTED", "CANCELLED", "ENDED"].includes(state) &&
                       (p.isMe || ((r.isHost || admin) && !p.isHost)) && (
@@ -375,28 +418,37 @@ export function ReservationDetail({
                     placeholder="输入昵称，加入这一局"
                     required
                     disabled={
-                      !hydrated || (state !== "OPEN" && !canWait) || pending
+                      !hydrated ||
+                      !!closed ||
+                      (state !== "OPEN" && !canWait) ||
+                      pending ||
+                      recruiting
                     }
                   />
                 </Field>
                 <Button
                   className="mt-4 w-full"
                   disabled={
-                    !hydrated || (state !== "OPEN" && !canWait) || pending
+                    !hydrated ||
+                    !!closed ||
+                    (state !== "OPEN" && !canWait) ||
+                    pending ||
+                    recruiting
                   }
                 >
                   {pending ? <Loader2 className="animate-spin" /> : <Plus />}
                   {pending
                     ? "正在加入…"
-                    : state === "OPEN"
-                      ? "加入接龙"
-                      : state === "FULL"
-                        ? canWait
-                          ? "加入候补"
-                          : "候补已满（最多 100 人）"
-                        : statusLabels[state]}
+                    : closed ||
+                      (state === "OPEN"
+                        ? "加入接龙"
+                        : state === "FULL"
+                          ? canWait
+                            ? "加入候补"
+                            : "候补已满（最多 100 人）"
+                          : statusLabels[state])}
                 </Button>
-                {state === "FULL" && (
+                {state === "FULL" && !closed && (
                   <p className="mt-3 text-xs leading-6 text-zinc-400">
                     有空位时将按顺序自动转为正式报名。候补不是正式报名，不发送外部通知。
                   </p>
@@ -427,14 +479,28 @@ export function ReservationDetail({
         key={r.id}
         id={r.id}
         latest={history}
-        paused={pending || cancelling || managing || inviting || attending}
+        paused={
+          pending ||
+          cancelling ||
+          managing ||
+          inviting ||
+          attending ||
+          recruiting
+        }
       />
       <RosterRemovalHistory
         key={`${r.id}:${removals.scope}`}
         id={r.id}
         scope={removals.scope}
         latest={removals}
-        paused={pending || cancelling || managing || inviting || attending}
+        paused={
+          pending ||
+          cancelling ||
+          managing ||
+          inviting ||
+          attending ||
+          recruiting
+        }
       />
       {action && (
         <RosterActionDialog

@@ -20,7 +20,8 @@ test("account backup restores credentials, sessions and guest claim state withou
     db.exec(`CREATE TABLE _prisma_migrations (migration_name TEXT, checksum TEXT, finished_at TEXT, rolled_back_at TEXT);
       INSERT INTO _prisma_migrations VALUES ('20260928000100_user_accounts','${"a".repeat(64)}','2026-09-28',NULL);
       INSERT INTO User(id,username,nickname,passwordHash,identityKey,recoveryHash) VALUES ('u','user','User','password-hash','identity-key','recovery-hash');
-      INSERT INTO UserSession(id,userId,version,expiresAt) VALUES ('session-hash','u',0,2000000000000);
+      INSERT INTO _prisma_migrations VALUES ('20260929000100_session_management','${"b".repeat(64)}','2026-09-29',NULL);
+      INSERT INTO UserSession(id,publicId,userId,version,expiresAt,createdAt,browser,os) VALUES ('session-hash','aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa','u',0,2000000000000,1900000000000,'Firefox','Linux');
       INSERT INTO GuestIdentity(hash,version,retired) VALUES ('guest',2,1);
       INSERT INTO GuestClaim(id,userId,guestHash,key,inputHash,result) VALUES ('claim','u','guest','key','input','{}');`);
     const tables = ["User", "UserSession", "GuestIdentity", "GuestClaim"],

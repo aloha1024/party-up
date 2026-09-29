@@ -14,20 +14,46 @@ import {
 } from "../lib/user-account";
 import { nickname } from "../lib/validation";
 import { recordAdminAction, type AuditActor } from "./admin-audit";
+import { sessionDevice } from "../lib/user-sessions";
 
 const randomSecret = () => randomBytes(32).toString("hex");
 const dummyHash = hashPassword(randomSecret());
 const accountError = () =>
   new AppError("USER_CREDENTIALS", "账号、密码或账号状态无效", 401);
-function sessionData(user: { id: string; version: number }, token: string) {
+function sessionData(
+  user: { id: string; version: number },
+  token: string,
+  userAgent?: string | null,
+) {
+  const now = new Date();
   return {
     id: digest(token),
     userId: user.id,
     version: user.version,
-    expiresAt: new Date(Date.now() + USER_SECONDS * 1000),
+    expiresAt: new Date(now.getTime() + USER_SECONDS * 1000),
+    createdAt: now,
+    ...sessionDevice(userAgent),
   };
 }
-export async function registerUser(input: unknown) {
+async function cleanupExpiredSessions(
+  tx: Prisma.TransactionClient,
+  now = new Date(),
+) {
+  const expired = await tx.userSession.findMany({
+    where: { expiresAt: { lte: now } },
+    orderBy: [{ expiresAt: "asc" }, { id: "asc" }],
+    take: 100,
+    select: { id: true },
+  });
+  if (expired.length)
+    await tx.userSession.deleteMany({
+      where: {
+        id: { in: expired.map((session) => session.id) },
+        expiresAt: { lte: now },
+      },
+    });
+}
+export async function registerUser(input: unknown, userAgent?: string | null) {
   const data = registrationSchema.parse(input);
   const passwordHash = await hashPassword(data.password);
   const recoveryCode = randomSecret(),
@@ -42,7 +68,9 @@ export async function registerUser(input: unknown) {
           recoveryHash: digest(recoveryCode),
         },
       });
-      await tx.userSession.create({ data: sessionData(user, token) });
+      await tx.userSession.create({
+        data: sessionData(user, token, userAgent),
+      });
     });
   } catch (e) {
     if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002")
@@ -55,7 +83,7 @@ export async function registerUser(input: unknown) {
   }
   return { token, recoveryCode };
 }
-export async function loginUser(input: unknown) {
+export async function loginUser(input: unknown, userAgent?: string | null) {
   const data = loginSchema.parse(input);
   const user = await db.user.findUnique({ where: { username: data.username } });
   const valid = await verifyPasswordHash(
@@ -75,10 +103,8 @@ export async function loginUser(input: unknown) {
       data: { version: { increment: 0 } },
     });
     if (!locked.count) throw accountError();
-    await tx.userSession.deleteMany({
-      where: { expiresAt: { lte: new Date() } },
-    });
-    await tx.userSession.create({ data: sessionData(user, token) });
+    await cleanupExpiredSessions(tx);
+    await tx.userSession.create({ data: sessionData(user, token, userAgent) });
   });
   return { token, mustChangePassword: user.mustChangePassword };
 }

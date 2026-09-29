@@ -6,14 +6,17 @@ export const changeFields = [
   "description",
   "scheduledAt",
   "maxPlayers",
+  "registrationDeadline",
 ] as const;
 export const historyItemSchema = z.object({
   id: z.number().int().positive(),
-  action: z.enum(["EDIT", "CANCEL", "END", "REOPEN"]),
+  action: z.enum(["EDIT", "CANCEL", "END", "REOPEN", "PAUSE", "RESUME"]),
   actorRole: z.enum(["HOST", "ADMIN"]),
   fields: z.array(z.enum(changeFields)),
   scheduledAtBefore: z.string().datetime().nullable(),
   scheduledAtAfter: z.string().datetime().nullable(),
+  registrationDeadlineBefore: z.string().datetime().nullable().optional(),
+  registrationDeadlineAfter: z.string().datetime().nullable().optional(),
   maxPlayersBefore: z.number().int().nullable(),
   maxPlayersAfter: z.number().int().nullable(),
   createdAt: z.string().datetime(),
