@@ -222,3 +222,122 @@ test("cancellation pauses detail refresh until the operation completes", async (
   }
   await expect(page.getByText("测试取消原因", { exact: true })).toBeVisible();
 });
+
+for (const operation of ["join", "rename"] as const) {
+  test(`${operation} pauses detail refresh and preserves input after failure without replaying`, async ({
+    page,
+    request,
+  }, testInfo) => {
+    const origin = process.env.TEST_BASE_URL!;
+    const host = operation === "rename" ? page.request : request;
+    await host.post("/api/identity", { headers: { Origin: origin } });
+    const scope = (await (await host.get("/api/identity")).json()).data.scope;
+    const created = await host.post("/api/reservations", {
+      headers: {
+        Origin: origin,
+        "Idempotency-Key": randomUUID(),
+        "X-Identity-Scope": scope,
+      },
+      data: {
+        gameName: "Panel-refresh-" + randomUUID(),
+        hostName: "Host",
+        scheduledAt: new Date(Date.now() + 86400000).toISOString(),
+        maxPlayers: 3,
+        description: "保留名单、备注与参与面板的布局",
+      },
+    });
+    expect(created.ok()).toBe(true);
+    const { data } = await created.json();
+    if (operation === "join")
+      await page.request.post("/api/identity", { headers: { Origin: origin } });
+    const now = await clock(page);
+    const path = "/reservation/" + data.id;
+    await page.goto(path);
+    await waitForInterval(page, 13500, 15000);
+    await page.clock.pauseAt(new Date(now.getTime() + 2000));
+    let reads = 0;
+    page.on("request", (req) => {
+      if (
+        req.headers().rsc === "1" &&
+        !req.headers()["next-router-prefetch"] &&
+        new URL(req.url()).pathname === path
+      )
+        reads++;
+    });
+    let attempts = 0;
+    let release!: () => void;
+    let entered!: () => void;
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const reached = new Promise<void>((resolve) => {
+      entered = resolve;
+    });
+    await page.route(
+      `**/api/reservations/${data.id}/participants`,
+      async (route) => {
+        attempts++;
+        if (attempts === 1) {
+          entered();
+          await held;
+          await route.fulfill({
+            status: 409,
+            json: { error: "测试冲突，请核对后重试" },
+          });
+        } else await route.continue();
+      },
+    );
+    if (operation === "rename")
+      await page.getByRole("button", { name: "修改昵称", exact: true }).click();
+    const input = page.getByLabel(
+      operation === "join" ? "你的昵称" : "新昵称",
+      { exact: true },
+    );
+    await input.fill("保留的昵称");
+    const submit = page.getByRole("button", {
+      name: operation === "join" ? "加入接龙" : "保存昵称",
+      exact: true,
+    });
+    try {
+      await submit.click();
+      await reached;
+      await expect(input).toBeDisabled();
+      const before = reads;
+      await page.clock.runFor(14000);
+      expect(reads).toBe(before);
+    } finally {
+      release();
+    }
+    const panel = page.getByRole(
+      operation === "join" ? "complementary" : "dialog",
+    );
+    await expect(panel.getByRole("alert")).toHaveText("测试冲突，请核对后重试");
+    await expect(input).toBeEnabled();
+    await expect(input).toHaveValue("保留的昵称");
+    await waitForInterval(page, 13500, 15000);
+    const afterFailure = reads;
+    await page.clock.runFor(15000);
+    await expect.poll(() => reads).toBeGreaterThan(afterFailure);
+    await expect(input).toHaveValue("保留的昵称");
+    expect(attempts).toBe(1);
+    // Only an explicit user retry may perform a second write.
+    await submit.click();
+    await expect(
+      page.getByText("你已在接龙名单中", { exact: true }),
+    ).toBeVisible();
+    await expect(page.getByRole("dialog")).toHaveCount(0);
+    await expect(
+      page.locator("li").filter({ hasText: "保留的昵称" }),
+    ).toBeVisible();
+    expect(attempts).toBe(2);
+    await waitForInterval(page, 13500, 15000);
+    const afterSuccess = reads;
+    await page.clock.runFor(15000);
+    await expect.poll(() => reads).toBeGreaterThan(afterSuccess);
+    expect(attempts).toBe(2);
+    await page.screenshot({
+      path: testInfo.outputPath("detail-panels.png"),
+      fullPage: true,
+    });
+  });
+}

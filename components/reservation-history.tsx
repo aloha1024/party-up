@@ -1,12 +1,11 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback } from "react";
 import { Button } from "./ui/button";
+import { useHistoryPagination } from "./use-history-pagination";
 import { request } from "../lib/client-request";
 import {
-  catchUpHistory,
   historyPageSchema,
-  mergeHistory,
   type HistoryPage,
 } from "../lib/reservation-history";
 
@@ -39,75 +38,22 @@ export function ReservationHistory({
   latest: HistoryPage;
   paused: boolean;
 }) {
-  const [page, setPage] = useState(latest);
-  const current = useRef(page);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState("");
-  const [retry, setRetry] = useState(0);
-  const [more, setMore] = useState(0);
-  const consumedMore = useRef(0);
-  const failedMore = useRef(false);
-  const generation = useRef(0);
-  const accepted = useRef(latest.items[0]?.id);
-
-  useEffect(() => {
-    const run = ++generation.current;
-    let alive = true;
-    const needsLatest = accepted.current !== latest.items[0]?.id;
-    const needsMore = more !== consumedMore.current;
-    if (paused || (!needsLatest && !needsMore)) {
-      setBusy(false);
-      return;
-    }
-    const load = async (before: number) => {
-      if (!alive || generation.current !== run)
-        throw new Error("记录加载已取消");
-      if (!navigator.onLine) throw new Error("当前离线，请恢复网络后重试");
-      return request(
+  const loadPage = useCallback(
+    (before: number, isCurrent: () => boolean) =>
+      request(
         `/api/reservations/${encodeURIComponent(id)}/history?before=${before}`,
         "GET",
         undefined,
-        { schema: historyPageSchema },
-      );
-    };
-    setBusy(true);
-    setError("");
-    void (async () => {
-      try {
-        let next = needsLatest
-          ? await catchUpHistory(latest, current.current, load)
-          : current.current;
-        if (needsMore && next.nextBefore !== null) {
-          const older = await load(next.nextBefore);
-          next = {
-            items: mergeHistory(next.items, older.items),
-            nextBefore: older.nextBefore,
-          };
-        }
-        if (!alive) return;
-        current.current = next;
-        accepted.current = latest.items[0]?.id;
-        consumedMore.current = more;
-        failedMore.current = false;
-        setPage(next);
-      } catch (e) {
-        if (alive) {
-          // A failed manual page load waits for another explicit click. A
-          // reconnect refresh must not silently replay that click.
-          if (needsMore) {
-            consumedMore.current = more;
-            failedMore.current = true;
-          }
-          setError(e instanceof Error ? e.message : "记录加载失败，请重试");
-        }
-      } finally {
-        if (alive) setBusy(false);
-      }
-    })();
-    return () => {
-      alive = false;
-    };
-  }, [id, latest, paused, retry, more]);
+        { schema: historyPageSchema, isCurrent },
+      ),
+    [id],
+  );
+  const { page, busy, error, loadMore, retry } = useHistoryPagination({
+    latest,
+    paused,
+    loadPage,
+    fallbackError: "记录加载失败，请重试",
+  });
 
   return (
     <section
@@ -177,9 +123,7 @@ export function ReservationHistory({
           key="retry"
           className="mt-4"
           disabled={busy || paused}
-          onClick={() =>
-            failedMore.current ? setMore((n) => n + 1) : setRetry((n) => n + 1)
-          }
+          onClick={retry}
         >
           重试加载记录
         </Button>
@@ -189,7 +133,7 @@ export function ReservationHistory({
             key="more"
             className="mt-4"
             disabled={busy || paused}
-            onClick={() => setMore((n) => n + 1)}
+            onClick={loadMore}
           >
             {busy ? "正在加载…" : "加载更早记录"}
           </Button>

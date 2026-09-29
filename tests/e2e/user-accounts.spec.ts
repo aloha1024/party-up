@@ -137,6 +137,235 @@ test("claim response loss keeps the same manual retry and blocks pending guest c
   expect(keys[0]).toBe(keys[1]);
   await expect(page.getByRole("heading", { name: r.gameName })).toHaveCount(1);
 });
+test("guest claim conflicts and stale previews require repreview before a partial selection", async ({
+  page,
+  context,
+}) => {
+  const origin = { Origin: process.env.TEST_BASE_URL! };
+  await context.request.post("/api/identity", { headers: origin });
+  const selected = await create(context, "选中关联" + username());
+  const retained = await create(context, "保留游客" + username());
+  const conflict = await create(context, "同场冲突" + username());
+  const { identity } = await account(context, username());
+  const headers = { ...origin, "X-Identity-Scope": identity.scope };
+  expect(
+    (
+      await context.request.post(
+        `/api/reservations/${conflict.id}/participants`,
+        { headers, data: { name: "账号参加者" } },
+      )
+    ).ok(),
+  ).toBeTruthy();
+  await page.goto("/account");
+  const claims = page.getByRole("region", { name: "关联游客记录" });
+  const checkbox = (gameName: string) =>
+    claims.locator("label").filter({ hasText: gameName }).getByRole("checkbox");
+  await claims.getByRole("button", { name: "预览游客记录" }).click();
+  await expect(checkbox(selected.gameName)).toBeChecked();
+  await expect(checkbox(retained.gameName)).toBeChecked();
+  await expect(checkbox(conflict.gameName)).not.toBeChecked();
+  await expect(checkbox(conflict.gameName)).toBeDisabled();
+  await expect(claims).toContainText("同场存在两份正式或候补名额");
+  await checkbox(retained.gameName).uncheck();
+
+  // Resolving a conflict changes the full preview snapshot, even when that
+  // reservation was not selected for the pending partial claim.
+  expect(
+    (
+      await context.request.delete(
+        `/api/reservations/${conflict.id}/participants`,
+        { headers },
+      )
+    ).ok(),
+  ).toBeTruthy();
+  page.on("dialog", (dialog) => dialog.accept());
+  await claims.getByRole("button", { name: "确认关联所选记录" }).click();
+  await expect(claims.getByRole("alert")).toContainText("重新预览");
+  await expect(checkbox(selected.gameName)).toBeDisabled();
+  await expect(checkbox(retained.gameName)).toBeDisabled();
+  await claims.getByRole("button", { name: "预览游客记录" }).click();
+  await expect(claims.getByRole("alert")).toHaveCount(0);
+  await expect(checkbox(conflict.gameName)).toBeEnabled();
+  for (const r of [selected, retained, conflict])
+    await expect(checkbox(r.gameName)).toBeChecked();
+  await checkbox(retained.gameName).uncheck();
+  await checkbox(conflict.gameName).uncheck();
+  const request = page.waitForRequest(
+    (request) =>
+      request.url().endsWith("/api/user/guest-claims") &&
+      request.method() === "POST",
+  );
+  await claims.getByRole("button", { name: "确认关联所选记录" }).click();
+  expect((await request).postDataJSON().ids).toEqual([selected.id]);
+  await expect(page).toHaveURL(/my-reservations/);
+  await expect(
+    page.getByRole("heading", { name: selected.gameName }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: retained.gameName }),
+  ).toHaveCount(0);
+  await expect(
+    page.getByRole("heading", { name: conflict.gameName }),
+  ).toHaveCount(0);
+  await page.goto("/account");
+  await page.getByRole("button", { name: "退出账号，使用游客模式" }).click();
+  await expect(page).toHaveURL(new URL("/", process.env.TEST_BASE_URL!).href);
+  for (const [r, isHost] of [
+    [selected, false],
+    [retained, true],
+    [conflict, true],
+  ] as const) {
+    const response = await context.request.get(`/api/reservations/${r.id}`);
+    expect(response.ok()).toBeTruthy();
+    expect((await response.json()).data.isHost).toBe(isHost);
+  }
+});
+
+test("claim migrates scoped and legacy drafts without overwriting account drafts", async ({
+  page,
+  context,
+}) => {
+  await context.request.post("/api/identity", {
+    headers: { Origin: process.env.TEST_BASE_URL! },
+  });
+  const guest = (await (await context.request.get("/api/identity")).json())
+    .data;
+  const existing = await create(context, "保留账号草稿" + username());
+  const migrated = await create(context, "迁移游客草稿" + username());
+  const { identity } = await account(context, username());
+  await page.goto("/account");
+  const draft = (gameName: string) =>
+    JSON.stringify({
+      version: 1,
+      fields: {
+        gameName,
+        date: "",
+        time: "",
+        hostName: "游客发起人",
+        maxPlayers: "3",
+        description: "尚未提交的内容",
+      },
+    });
+  const base = (id?: string) =>
+    `party-reservation-draft:${id ? "edit:" + id : "new"}`;
+  const from = (id?: string) => `${base(id)}:identity:${guest.storageKey}`;
+  const to = (id?: string) => `${base(id)}:identity:${identity.storageKey}`;
+  const stored = {
+    [from(existing.id)]: draft("保留的游客草稿"),
+    [to(existing.id)]: draft("已有账号草稿"),
+    [from(migrated.id)]: draft("迁移编辑草稿"),
+    [base()]: draft("旧格式创建草稿"),
+  };
+  await page.evaluate((values) => {
+    for (const [key, value] of Object.entries(values))
+      sessionStorage.setItem(key, value);
+  }, stored);
+  await page.getByRole("button", { name: "预览游客记录" }).click();
+  page.once("dialog", (dialog) => dialog.accept());
+  await page.getByRole("button", { name: "确认关联所选记录" }).click();
+  await expect(page).toHaveURL(/my-reservations/);
+  expect(
+    await page.evaluate(
+      (keys) => keys.map((key) => sessionStorage.getItem(key)),
+      [
+        from(existing.id),
+        to(existing.id),
+        from(migrated.id),
+        to(migrated.id),
+        base(),
+        to(),
+        "party-legacy-guest",
+      ],
+    ),
+  ).toEqual([
+    stored[from(existing.id)],
+    stored[to(existing.id)],
+    null,
+    stored[from(migrated.id)],
+    null,
+    stored[base()],
+    guest.storageKey,
+  ]);
+  await page.goto("/reservation/new");
+  await page.getByRole("button", { name: "恢复草稿", exact: true }).click();
+  await expect(page.getByLabel("游戏名称", { exact: true })).toHaveValue(
+    "旧格式创建草稿",
+  );
+});
+
+test("claim refuses unavailable submission storage and survives a draft migration write failure", async ({
+  page,
+  context,
+}) => {
+  await context.request.post("/api/identity", {
+    headers: { Origin: process.env.TEST_BASE_URL! },
+  });
+  const guest = (await (await context.request.get("/api/identity")).json())
+    .data;
+  const r = await create(context, "存储受限关联" + username());
+  const { identity } = await account(context, username());
+  await page.goto("/account");
+  await page.getByRole("button", { name: "预览游客记录" }).click();
+  const from = `party-reservation-draft:edit:${r.id}:identity:${guest.storageKey}`;
+  const to = `party-reservation-draft:edit:${r.id}:identity:${identity.storageKey}`;
+  let posts = 0;
+  page.on("request", (request) => {
+    if (
+      request.url().endsWith("/api/user/guest-claims") &&
+      request.method() === "POST"
+    )
+      posts++;
+  });
+  await page.evaluate(
+    ({ from, to }) => {
+      sessionStorage.setItem(from, "draft-to-preserve");
+      const get = Storage.prototype.getItem;
+      Storage.prototype.getItem = function (key) {
+        if (this === sessionStorage && key.startsWith("party-creation"))
+          throw new DOMException("Storage blocked", "SecurityError");
+        return get.call(this, key);
+      };
+      Object.defineProperty(window, "restoreClaimStorage", {
+        configurable: true,
+        value: () => {
+          Storage.prototype.getItem = get;
+          const set = Storage.prototype.setItem;
+          Storage.prototype.setItem = function (key, value) {
+            if (this === sessionStorage && key === to)
+              throw new DOMException("Storage full", "QuotaExceededError");
+            return set.call(this, key, value);
+          };
+        },
+      });
+    },
+    { from, to },
+  );
+  await page.getByRole("button", { name: "确认关联所选记录" }).click();
+  await expect(page.locator("p[role=alert]")).toContainText(
+    "无法读取本机提交记录",
+  );
+  expect(posts).toBe(0);
+  await page.evaluate(() => {
+    (
+      window as typeof window & { restoreClaimStorage: () => void }
+    ).restoreClaimStorage();
+  });
+  page.once("dialog", (dialog) => dialog.accept());
+  await page.getByRole("button", { name: "确认关联所选记录" }).click();
+  await expect(page).toHaveURL(/my-reservations/);
+  expect(posts).toBe(1);
+  await expect(page.getByRole("heading", { name: r.gameName })).toBeVisible();
+  expect(
+    await page.evaluate(
+      (keys) => keys.map((key) => sessionStorage.getItem(key)),
+      [from, to],
+    ),
+  ).toEqual(["draft-to-preserve", null]);
+  const response = await context.request.get(`/api/reservations/${r.id}`);
+  expect(response.ok()).toBeTruthy();
+  expect((await response.json()).data.isHost).toBe(true);
+});
+
 test("logout clears private content in another tab and account drafts do not become guest drafts", async ({
   page,
   context,
