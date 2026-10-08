@@ -59,7 +59,8 @@ export async function respond(
           : viewer.token;
         const businessWrite =
           req.method !== "GET" &&
-          req.nextUrl.pathname.startsWith("/api/reservations");
+          (req.nextUrl.pathname.startsWith("/api/reservations") ||
+            req.nextUrl.pathname === "/api/notifications");
         if (businessWrite) {
           if (viewer.mode === "invalid" || viewer.user?.mustChangePassword)
             throw new AppError(

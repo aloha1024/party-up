@@ -1,5 +1,6 @@
 import { z } from "zod";
 export const auditActions = [
+  "RESERVATION_MEETING",
   "USER_ENABLE",
   "USER_DISABLE",
   "USER_REVOKE_SESSIONS",
@@ -24,6 +25,7 @@ export const auditActions = [
 ] as const;
 export type AuditAction = (typeof auditActions)[number];
 export const auditLabels: Record<AuditAction, string> = {
+  RESERVATION_MEETING: "修改集合信息",
   USER_ENABLE: "启用普通账号",
   USER_DISABLE: "停用普通账号",
   USER_REVOKE_SESSIONS: "撤销普通账号登录",

@@ -1,6 +1,8 @@
 import { z } from "zod";
 
 export const changeFields = [
+  "platform",
+  "gameServer",
   "gameName",
   "hostName",
   "description",

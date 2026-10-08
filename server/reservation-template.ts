@@ -15,6 +15,8 @@ export async function reservationTemplate(
     where: { id, deletedAt: null },
     select: {
       visibility: true,
+      platform: true,
+      gameServer: true,
       gameName: true,
       hostName: true,
       maxPlayers: true,
@@ -34,6 +36,8 @@ export async function reservationTemplate(
     );
   }
   return {
+    platform: row.platform,
+    gameServer: row.gameServer,
     visibility: row.visibility as "PUBLIC" | "INVITE",
     gameName: row.gameName,
     hostName: row.hostName,

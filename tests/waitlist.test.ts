@@ -332,8 +332,10 @@ test("host rename checks both rosters, copy excludes queues, purge removes queue
   assert.deepEqual(Object.keys(template).sort(), [
     "description",
     "gameName",
+    "gameServer",
     "hostName",
     "maxPlayers",
+    "platform",
     "visibility",
   ]);
   const copy = await createReservation(

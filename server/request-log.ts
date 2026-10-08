@@ -17,7 +17,7 @@ export function errorDiagnostics(error: unknown) {
   let errorLocation: string | undefined;
   const root = process.cwd().replaceAll("\\", "/") + "/";
   const source =
-    /^(?:server\/(?:http|request-body|request-budget|request-log|request-metrics|reservations|reservation-list|reservation-trash|reservation-record|reservation-detail|reservation-transaction|hash-token|admin|admin-auth|admin-accounts|admin-audit|admin-audit-list|creation-result|db|database-config|rate-limit)\.ts|lib\/(?:validation|reservation-list|reservation-trash|admin-audit)\.ts|\.next\/server\/chunks\/(?:ssr\/)?(?:\[root-of-the-server\]__)?[a-f0-9]+(?:\._)?\.js)$/;
+    /^(?:server\/(?:http|request-body|request-budget|request-log|request-metrics|reservations|reservation-list|reservation-trash|reservation-record|reservation-detail|reservation-transaction|reservation-meeting|reservation-conflicts|notifications|private-value|saved-templates|saved-template-http|calendar-subscription|admin-statistics|hash-token|admin|admin-auth|admin-accounts|admin-audit|admin-audit-list|creation-result|db|database-config|rate-limit)\.ts|lib\/(?:validation|reservation-list|reservation-trash|admin-audit|calendar-subscription|reservation-meeting|saved-template|reservation-conflicts|admin-statistics)\.ts|\.next\/server\/chunks\/(?:ssr\/)?(?:\[root-of-the-server\]__)?[a-f0-9]+(?:\._)?\.js)$/;
   if (error instanceof Error && typeof error.stack === "string") {
     for (const frame of error.stack.split("\n").slice(1, 21)) {
       if (!/^\s+at /.test(frame)) continue;
@@ -45,6 +45,7 @@ export function errorDiagnostics(error: unknown) {
 
 // Never include query strings, cookies, submitted values, or exception messages.
 export function routeLabel(path: string) {
+  if (path.startsWith("/api/user/templates/")) return "/api/user/templates/:id";
   if (
     path.startsWith("/api/user/sessions/") &&
     path !== "/api/user/sessions/all"
@@ -55,7 +56,7 @@ export function routeLabel(path: string) {
     .map((part, index) =>
       index === 3 &&
       ["reservations", "accounts", "trash"].includes(path.split("/")[2]) &&
-      part !== "submission"
+      !["submission", "conflicts"].includes(part)
         ? ":id"
         : index === 4 &&
             ["reservations", "accounts", "users", "trash"].includes(

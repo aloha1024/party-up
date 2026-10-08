@@ -8,6 +8,7 @@ import { z } from "zod";
 import type { Prisma } from "@prisma/client";
 import { db } from "./db";
 import { recordReservationEdit } from "./reservation-history";
+import { recordNotifications, reservationRecipients } from "./notifications";
 import {
   renameSchema,
   removalSchema,
@@ -222,6 +223,9 @@ async function promoteWaitlist(tx: Prisma.TransactionClient, id: string) {
       },
     });
     await tx.waitlistEntry.delete({ where: { id: entry.id } });
+    await recordNotifications(tx, id, "PROMOTED", `promoted:${entry.id}`, [
+      entry.tokenHash,
+    ]);
   }
 }
 function checkDuplicate(r: Row, name: string, token: string) {
@@ -419,6 +423,13 @@ export async function removeRosterEntry(
         actorRole: administrator ? "ADMIN" : "HOST",
       },
     });
+    await recordNotifications(
+      tx,
+      id,
+      "REMOVED",
+      `removed:${id}:${data.kind}:${data.entryId}`,
+      [row.tokenHash],
+    );
     if (administrator)
       await recordAdminAction(tx, administrator, "RESERVATION_ROSTER_REMOVE", {
         id,
@@ -518,6 +529,13 @@ export async function editReservation(
         where: { reservationId: id, checkedInAt: { not: null } },
         data: { checkedInAt: null, attendanceVersion: { increment: 1 } },
       });
+      await recordNotifications(
+        tx,
+        id,
+        "RESCHEDULED",
+        `rescheduled:${id}:${r.editVersion + 1}`,
+        reservationRecipients(r, hashToken(token)),
+      );
     }
     await tx.gameReservation.update({
       where: { id },
@@ -584,6 +602,13 @@ export async function cancelReservation(
         fields: "[]",
       },
     });
+    await recordNotifications(
+      tx,
+      id,
+      "CANCELLED",
+      `cancelled:${id}`,
+      reservationRecipients(r, hashToken(token)),
+    );
   });
   return detail(id, token, !!administrator);
 }

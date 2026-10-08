@@ -21,6 +21,8 @@ const time = (value: string) =>
     hour12: false,
   }).format(new Date(value));
 const labels = {
+  platform: "游戏平台",
+  gameServer: "区服",
   gameName: "游戏名称",
   hostName: "发起人昵称",
   description: "备注",

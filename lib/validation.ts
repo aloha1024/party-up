@@ -6,6 +6,8 @@ export const nickname = text(24)
   .pipe(text(24));
 export const joinSchema = z.object({ name: nickname });
 export const creationInputSchema = z.object({
+  platform: z.string().trim().max(80, "平台最多 80 字").optional(),
+  gameServer: z.string().trim().max(80, "区服最多 80 字").optional(),
   visibility: z.enum(["PUBLIC", "INVITE"]).default("PUBLIC"),
   gameName: text(80),
   hostName: nickname,
@@ -41,9 +43,12 @@ export const editSchema = createSchema.omit({ visibility: true }).extend({
 
 // Preserve the pre-invitation public submission fingerprint, including key order.
 export function creationFingerprint(data: z.infer<typeof creationInputSchema>) {
-  const { visibility, registrationDeadline, ...legacy } = data;
+  const { visibility, registrationDeadline, platform, gameServer, ...legacy } =
+    data;
   return JSON.stringify({
     ...(visibility === "INVITE" ? { ...legacy, visibility } : legacy),
+    ...(platform ? { platform } : {}),
+    ...(gameServer ? { gameServer } : {}),
     ...(registrationDeadline
       ? { registrationDeadline: new Date(registrationDeadline).toISOString() }
       : {}),

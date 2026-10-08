@@ -28,7 +28,14 @@ export function AdminPanel({
   authenticated: boolean;
   reservations: ReservationSummary[];
   listing?: ReservationPage;
-  view?: "reservations" | "password" | "accounts" | "trash" | "audit" | "users";
+  view?:
+    | "reservations"
+    | "password"
+    | "accounts"
+    | "trash"
+    | "audit"
+    | "users"
+    | "statistics";
   canCreateAdmins?: boolean;
   children?: ReactNode;
   refreshSample?: string;
@@ -117,17 +124,19 @@ export function AdminPanel({
       </Link>
       <div className="my-8 flex items-center justify-between gap-4">
         <h1 className="text-3xl font-bold">
-          {view === "audit"
-            ? "操作记录"
-            : view === "trash"
-              ? "回收站"
-              : view === "accounts"
-                ? "管理员账号"
-                : view === "users"
-                  ? "普通账号"
-                  : view === "password"
-                    ? "修改管理员密码"
-                    : "预约管理"}
+          {view === "statistics"
+            ? "活动概览"
+            : view === "audit"
+              ? "操作记录"
+              : view === "trash"
+                ? "回收站"
+                : view === "accounts"
+                  ? "管理员账号"
+                  : view === "users"
+                    ? "普通账号"
+                    : view === "password"
+                      ? "修改管理员密码"
+                      : "预约管理"}
         </h1>
         {authenticated && (
           <Button
@@ -147,6 +156,18 @@ export function AdminPanel({
       </div>
       {authenticated && (
         <nav aria-label="管理员导航" className="mb-6 flex flex-wrap gap-3">
+          <Button
+            asChild
+            variant={view === "statistics" ? "default" : "outline"}
+          >
+            <Link
+              href="/admin/statistics"
+              prefetch={false}
+              aria-current={view === "statistics" ? "page" : undefined}
+            >
+              活动概览
+            </Link>
+          </Button>
           <Button
             asChild
             variant={view === "reservations" ? "default" : "outline"}
@@ -264,6 +285,7 @@ export function AdminPanel({
           {view === "accounts" ||
           view === "trash" ||
           view === "audit" ||
+          view === "statistics" ||
           view === "users" ? (
             children
           ) : view === "password" ? (

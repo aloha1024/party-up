@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import "./globals.css";
 import { currentPageViewer } from "@/server/page-identity";
 import { publicViewer } from "@/server/user-identity";
+import { unreadNotificationCount } from "@/server/notifications";
 import {
   IdentityProvider,
   AccountNavigation,
@@ -19,7 +20,11 @@ export default async function RootLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const viewer = publicViewer(await currentPageViewer());
+  const current = await currentPageViewer();
+  const viewer = publicViewer(current);
+  const unread = await unreadNotificationCount(
+    current.user?.mustChangePassword ? undefined : current.token,
+  );
   return (
     <html lang="zh-CN">
       <body>
@@ -42,6 +47,16 @@ export default async function RootLayout({
                 className="flex flex-wrap items-center gap-2"
               >
                 <AccountNavigation />
+                <Button asChild size="sm" variant="ghost">
+                  <Link
+                    href="/notifications"
+                    prefetch={false}
+                    aria-label="站内提醒"
+                  >
+                    站内提醒
+                    {unread > 0 ? ` (${unread > 99 ? "99+" : unread})` : ""}
+                  </Link>
+                </Button>
                 <Button asChild size="sm" variant="ghost">
                   <Link href="/my-reservations" prefetch={false}>
                     我的预约

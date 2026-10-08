@@ -17,6 +17,10 @@ model GameReservation {
   recruitmentPaused    Boolean             @default(false)
   maxPlayers           Int
   description          String              @default("")
+  platform             String              @default("")
+  gameServer           String              @default("")
+  meetingCipher        String?
+  meetingVersion       Int                 @default(0)
   status               String              @default("OPEN")
   endedAt              DateTime?
   deletedAt            DateTime?
@@ -34,6 +38,7 @@ model GameReservation {
   inviteHash           String?
   inviteCipher         String?
   access               ReservationAccess[]
+  notifications        Notification[]
 
   @@index([scheduledAt])
   @@index([deletedAt, scheduledAt, id])
@@ -157,18 +162,50 @@ model ReservationAccess {
 }
 
 model User {
-  id                 String        @id @default(uuid())
-  username           String        @unique
-  nickname           String
-  passwordHash       String
-  identityKey        String        @unique @default(uuid())
-  recoveryHash       String?
-  isActive           Boolean       @default(true)
-  mustChangePassword Boolean       @default(false)
-  version            Int           @default(0)
-  createdAt          DateTime      @default(now())
-  sessions           UserSession[]
-  claims             GuestClaim[]
+  id                   String                    @id @default(uuid())
+  username             String                    @unique
+  nickname             String
+  passwordHash         String
+  identityKey          String                    @unique @default(uuid())
+  recoveryHash         String?
+  isActive             Boolean                   @default(true)
+  mustChangePassword   Boolean                   @default(false)
+  version              Int                       @default(0)
+  createdAt            DateTime                  @default(now())
+  sessions             UserSession[]
+  claims               GuestClaim[]
+  templates            UserReservationTemplate[]
+  calendarSubscription CalendarSubscription?
+}
+
+model CalendarSubscription {
+  userId         String   @id
+  tokenHash      String?  @unique
+  userVersion    Int
+  version        Int      @default(0)
+  includeInvites Boolean  @default(false)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model UserReservationTemplate {
+  id          String   @id @default(cuid())
+  userId      String
+  name        String
+  visibility  String   @default("PUBLIC")
+  gameName    String
+  hostName    String
+  maxPlayers  Int
+  description String   @default("")
+  platform    String   @default("")
+  gameServer  String   @default("")
+  version     Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, updatedAt, id])
 }
 
 model UserSession {
@@ -204,4 +241,20 @@ model GuestClaim {
 
   @@unique([userId, key])
   @@index([guestHash])
+}
+
+model Notification {
+  id            Int             @id @default(autoincrement())
+  reservationId String
+  recipientHash String
+  eventKey      String
+  kind          String
+  createdAt     DateTime        @default(now())
+  readAt        DateTime?
+  reservation   GameReservation @relation(fields: [reservationId], references: [id], onDelete: Cascade)
+
+  @@unique([recipientHash, eventKey])
+  @@index([recipientHash, id])
+  @@index([recipientHash, readAt, id])
+  @@index([reservationId])
 }

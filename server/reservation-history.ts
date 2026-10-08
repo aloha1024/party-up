@@ -13,7 +13,12 @@ import { measureTransaction } from "./request-metrics";
 type Editable = Pick<
   GameReservation,
   "gameName" | "hostName" | "description" | "maxPlayers"
-> & { scheduledAt: string; registrationDeadline?: string | null };
+> & {
+  scheduledAt: string;
+  registrationDeadline?: string | null;
+  platform?: string;
+  gameServer?: string;
+};
 
 export async function recordReservationEdit(
   tx: Prisma.TransactionClient,
@@ -30,7 +35,10 @@ export async function recordReservationEdit(
             : null)
       : field === "scheduledAt"
         ? before.scheduledAt.getTime() !== new Date(after.scheduledAt).getTime()
-        : before[field] !== after[field],
+        : (field === "platform" || field === "gameServer") &&
+            after[field] === undefined
+          ? false
+          : before[field] !== after[field],
   );
   if (!fields.length) return;
   await tx.reservationChange.create({

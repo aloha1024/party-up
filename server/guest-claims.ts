@@ -4,6 +4,7 @@ import { db } from "./db";
 import { AppError } from "./errors";
 import { writeTransaction } from "./request-budget";
 import { lockUser, requireUser } from "./user-accounts";
+import { migrateNotifications } from "./notifications";
 import {
   digest,
   memberToken,
@@ -21,6 +22,7 @@ function guestReservations(
       { waitlist: { some: { tokenHash: guestHash } } },
       { access: { some: { tokenHash: guestHash } } },
       { removals: { some: { targetTokenHash: guestHash } } },
+      { notifications: { some: { recipientHash: guestHash } } },
     ],
   };
 }
@@ -30,7 +32,7 @@ async function snapshot(
   guestHash: string,
   userHash: string,
 ) {
-  const [guest, reservations, submissions] = await Promise.all([
+  const [guest, reservations, submissions, notifications] = await Promise.all([
     tx.guestIdentity.findUnique({ where: { hash: guestHash } }),
     tx.gameReservation.findMany({
       where: guestReservations(guestHash),
@@ -47,6 +49,13 @@ async function snapshot(
     }),
     tx.creationRequest.findMany({
       where: { ownerTokenHash: { in: [guestHash, userHash] } },
+      orderBy: { id: "asc" },
+    }),
+    tx.notification.findMany({
+      where: {
+        recipientHash: { in: [guestHash, userHash] },
+        reservation: { is: guestReservations(guestHash) },
+      },
       orderBy: { id: "asc" },
     }),
   ]);
@@ -129,11 +138,13 @@ async function snapshot(
         },
         reservations,
         submissions,
+        ...(notifications.length ? { notifications } : {}),
       }),
     ),
     version: guest?.version ?? 0,
     retired: guest?.retired ?? false,
     grants,
+    notifications,
   };
 }
 
@@ -244,6 +255,7 @@ export async function claimGuestRecords(v: Viewer, input: unknown) {
       where: { reservationId: { in: ids }, ownerTokenHash: guestHash },
       data: { ownerTokenHash: userHash },
     });
+    await migrateNotifications(tx, ids, guestHash, userHash, s.notifications);
     // The locked snapshot already includes both identities' grants. Ownership
     // updates above leave these records untouched; keep them within this attempt.
     for (const id of ids) {

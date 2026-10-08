@@ -3,6 +3,7 @@ import { RegisteredFeature, useIdentity } from "./identity-provider";
 import { InvitationEntry, InvitationManager } from "./reservation-invitation";
 import { ReservationAttendance } from "./reservation-attendance";
 import { ReservationRecruitment } from "./reservation-recruitment";
+import { ReservationMeeting } from "./reservation-meeting";
 import { recruitmentClosure } from "../lib/recruitment";
 import { attendanceOpensAt } from "../lib/reservation-attendance";
 import { CancelReservation } from "@/components/cancel-reservation";
@@ -16,6 +17,7 @@ import { Button } from "@/components/ui/button";
 import { useReservationRefresh } from "@/components/use-reservation-refresh";
 import { ensureBrowserIdentity } from "@/lib/browser-identity";
 import { request } from "@/lib/client-request";
+import { confirmScheduleConflict } from "@/lib/confirm-schedule-conflict";
 import { getStatus } from "@/lib/status";
 import { formatTime } from "@/lib/utils";
 import { joinSchema } from "@/lib/validation";
@@ -54,12 +56,19 @@ export function ReservationDetail({
   const [inviting, setInviting] = useState(false);
   const [managing, setManaging] = useState(false);
   const [recruiting, setRecruiting] = useState(false);
+  const [meetingPending, setMeetingPending] = useState(false);
   const [action, setAction] = useState<RosterAction | null>(null);
   useEffect(() => {
     setAction(null);
   }, [r.id, removals.scope]);
   const refreshPaused =
-    pending || cancelling || managing || inviting || attending || recruiting;
+    pending ||
+    cancelling ||
+    managing ||
+    inviting ||
+    attending ||
+    recruiting ||
+    meetingPending;
   useReservationRefresh({
     sample: refreshSample,
     data: { reservation: r, admin },
@@ -89,6 +98,11 @@ export function ReservationDetail({
     startTransition(async () => {
       try {
         await ensureBrowserIdentity();
+        if (
+          method === "POST" &&
+          !(await confirmScheduleConflict(r.scheduledAt, r.id))
+        )
+          return;
         await request(
           `/api/reservations/${r.id}/${queue ? "waitlist" : "participants"}`,
           method,
@@ -170,6 +184,12 @@ export function ReservationDetail({
         reservation={r}
         admin={admin}
         onPendingChange={setAttending}
+      />
+      <ReservationMeeting
+        key={`${r.id}:${!!r.meeting}:${admin}`}
+        reservation={r}
+        admin={admin}
+        onPendingChange={setMeetingPending}
       />
       {(r.isHost || admin) &&
         !["STARTED", "CANCELLED", "ENDED"].includes(state) && (

@@ -10,9 +10,11 @@ import { useIdentity } from "./identity-provider";
 export function CreateForm({
   reservation: initialReservation,
   template,
+  templateMode = "copy",
 }: {
   reservation?: Reservation;
   template?: ReservationTemplate;
+  templateMode?: "copy" | "saved";
 }) {
   const identity = useIdentity();
   const {
@@ -42,14 +44,22 @@ export function CreateForm({
         {reservation ? "EDIT YOUR PARTY" : "CREATE A PARTY"}
       </p>
       <h1 className="mb-3 mt-3 text-3xl font-bold">
-        {reservation ? "编辑预约" : template ? "再开一局" : "下一局，你来发起"}
+        {reservation
+          ? "编辑预约"
+          : template
+            ? templateMode === "saved"
+              ? "使用模板"
+              : "再开一局"
+            : "下一局，你来发起"}
         <span className="text-lime-300">.</span>
       </h1>
       <p className="mb-8 text-sm text-zinc-400">
         {reservation
           ? "修改后分享链接保持不变，已报名的队友会保留。"
           : template
-            ? "已复制旧预约配置，请重新选择日期和时间。报名名单不会复制，新预约将使用新的分享链接。"
+            ? templateMode === "saved"
+              ? "已填入常用模板，请选择日期和时间。报名截止与私密集合信息需重新设置，创建后不会修改原模板。"
+              : "已复制旧预约配置，请重新选择日期和时间。报名名单不会复制，新预约将使用新的分享链接。"
             : "填好开局信息，分享链接就能召集队友。"}
       </p>
       <form className="panel space-y-6 p-6 sm:p-8" onSubmit={submit}>
@@ -179,6 +189,17 @@ export function CreateForm({
               修改开玩时间将清空已有到场确认，参与者需要重新确认；仅修改其他内容不会清空。
             </p>
           )}
+          <div className="grid gap-5 sm:grid-cols-2">
+            <Field title="游戏平台（选填）">
+              <Input {...field("platform")} maxLength={80} />
+            </Field>
+            <Field title="区服（选填）">
+              <Input {...field("gameServer")} maxLength={80} />
+            </Field>
+          </div>
+          <p className="text-xs text-zinc-400">
+            平台和区服对有预约查看权限的人可见。房间密码请在创建后的详情页填写集合信息，不要放入备注。
+          </p>
           <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
             <Field title="预约日期">
               <Input type="date" {...field("date")} required />

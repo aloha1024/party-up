@@ -1,9 +1,18 @@
 import type { Status } from "@/lib/status";
 export type ReservationTemplate = Pick<
   Reservation,
-  "gameName" | "hostName" | "maxPlayers" | "description" | "visibility"
+  | "gameName"
+  | "hostName"
+  | "maxPlayers"
+  | "description"
+  | "visibility"
+  | "platform"
+  | "gameServer"
 >;
 export type Reservation = {
+  platform?: string;
+  gameServer?: string;
+  meeting?: import("../lib/reservation-meeting").Meeting | null;
   visibility?: "PUBLIC" | "INVITE";
   id: string;
   gameName: string;

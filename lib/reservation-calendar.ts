@@ -44,6 +44,51 @@ const utc = (value: string) =>
     .replace(/[-:]/g, "")
     .replace(/\.\d{3}Z$/, "Z");
 
+export function subscriptionCalendar(
+  records: {
+    id: string;
+    gameName: string;
+    scheduledAt: string;
+    updatedAt: string;
+    revision: number;
+    status: string;
+  }[],
+  origin: string,
+) {
+  const base = new URL(origin);
+  if (!["http:", "https:"].includes(base.protocol))
+    throw new Error("无效的网站地址");
+  const events = records.flatMap((r) => {
+    const url = new URL(`/reservation/${encodeURIComponent(r.id)}`, base.origin)
+      .href;
+    return [
+      "BEGIN:VEVENT",
+      `UID:${encodeURIComponent(r.id)}@party-up`,
+      `DTSTAMP:${utc(r.updatedAt)}`,
+      `LAST-MODIFIED:${utc(r.updatedAt)}`,
+      `SEQUENCE:${r.revision}`,
+      `DTSTART:${utc(r.scheduledAt)}`,
+      `SUMMARY:${text((r.status === "ENDED" ? "已结束 · " : "一起开黑 · ") + r.gameName)}`,
+      `STATUS:${r.status === "CANCELLED" ? "CANCELLED" : "CONFIRMED"}`,
+      `DESCRIPTION:${text("仅记录开局时间，未指定结束时间。以站内最新状态为准。")}`,
+      `URL:${url}`,
+      "END:VEVENT",
+    ];
+  });
+  return (
+    [
+      "BEGIN:VCALENDAR",
+      "VERSION:2.0",
+      "PRODID:-//Party Up//Personal Subscription//ZH-CN",
+      "CALSCALE:GREGORIAN",
+      ...events,
+      "END:VCALENDAR",
+    ]
+      .map(fold)
+      .join("\r\n") + "\r\n"
+  );
+}
+
 export function reservationCalendar(
   input: CalendarReservation,
   origin: string,

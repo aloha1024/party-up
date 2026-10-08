@@ -9,6 +9,25 @@ import {
 } from "../server/request-log";
 import { Prisma } from "@prisma/client";
 import { buildVersion } from "../server/build-version";
+
+test("new feature diagnostics allow exact source names and never include exception text or absolute paths", () => {
+  for (const file of [
+    "reservation-meeting",
+    "private-value",
+    "notifications",
+    "reservation-conflicts",
+    "saved-templates",
+    "calendar-subscription",
+    "admin-statistics",
+  ]) {
+    const error = new Error("secret room password and token");
+    error.stack = `Error: secret room password and token\n    at code (${process.cwd()}/server/${file}.ts:10:12)`;
+    const result = errorDiagnostics(error);
+    assert.equal(result.errorLocation, `server/${file}.ts:10:12`);
+    assert.ok(!JSON.stringify(result).includes("secret"));
+    assert.ok(!JSON.stringify(result).includes(process.cwd()));
+  }
+});
 import {
   withRequestMetrics,
   requestMetrics,
@@ -202,6 +221,14 @@ test("request logs correlate responses without recording identifiers or private 
   assert.equal(
     routeLabel("/api/reservations/submission"),
     "/api/reservations/submission",
+  );
+  assert.equal(
+    routeLabel("/api/reservations/conflicts"),
+    "/api/reservations/conflicts",
+  );
+  assert.equal(
+    routeLabel("/api/user/templates/private-template-id"),
+    "/api/user/templates/:id",
   );
 });
 test("only a valid build revision is exposed to the admin page", (t) => {

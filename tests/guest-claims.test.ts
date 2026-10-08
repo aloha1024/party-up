@@ -422,6 +422,7 @@ function trackTransactionDelegates(t: TestContext) {
     "gameReservation",
     "creationRequest",
     "reservationAccess",
+    "notification",
   ]);
   // Observe public Prisma delegate calls while every operation still executes
   // against the real isolated database. Relation includes may emit several SQL
@@ -498,6 +499,8 @@ for (const grantCount of [1, 4]) {
     assert.equal(calls("guestIdentity", "findUnique").length, 1);
     assert.equal(calls("reservationAccess", "findMany").length, 0);
     assert.equal(calls("reservationAccess", "findUnique").length, 0);
+    assert.equal(calls("notification", "findMany").length, 1);
+    assert.equal(calls("notification", "findUnique").length, 0);
     assert.deepEqual(
       calls("gameReservation", "findFirst").map((call) => call.args),
       [
@@ -509,6 +512,7 @@ for (const grantCount of [1, 4]) {
               { waitlist: { some: { tokenHash: a.guestHash } } },
               { access: { some: { tokenHash: a.guestHash } } },
               { removals: { some: { targetTokenHash: a.guestHash } } },
+              { notifications: { some: { recipientHash: a.guestHash } } },
             ],
           },
           select: { id: true },

@@ -195,6 +195,10 @@ test("upgrade retains reservations, roster, root and moderator credentials with 
         inviteCipher: null,
         registrationDeadline: null,
         recruitmentPaused: 0,
+        platform: "",
+        gameServer: "",
+        meetingCipher: null,
+        meetingVersion: 0,
       },
     );
     assert.deepEqual(

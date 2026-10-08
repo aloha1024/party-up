@@ -17,7 +17,7 @@ export async function detail(id: string, token?: string, admin = false) {
     if (!r || r.deletedAt)
       throw new AppError("NOT_FOUND", "预约不存在或已被移除", 404);
     await requireReservationAccess(tx, r, token, admin);
-    return serialize(r, token);
+    return serialize(r, token, admin);
   });
 }
 
@@ -40,7 +40,7 @@ export async function reservationPageData(
         if (!r || r.deletedAt)
           throw new AppError("NOT_FOUND", "预约不存在或已被移除", 404);
         await requireReservationAccess(tx, r, token, !!admin);
-        const reservation = serialize(r, token);
+        const reservation = serialize(r, token, !!admin);
         const history = await readReservationHistory(tx, id);
         const removals = await readRosterRemovals(tx, r, token, admin);
         return { reservation, history, removals };

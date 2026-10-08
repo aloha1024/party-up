@@ -3,6 +3,8 @@ import { creationInputSchema, creationFingerprint } from "./validation";
 import { scopedStorageKey, legacyStorageAllowed } from "./client-identity";
 
 const fieldsSchema = z.object({
+  platform: z.string().max(80).optional(),
+  gameServer: z.string().max(80).optional(),
   visibility: z.enum(["PUBLIC", "INVITE"]).optional(),
   gameName: z.string().max(80),
   date: z.string().max(32),
@@ -105,6 +107,10 @@ export function creationInputFromFields(
   }
   return {
     visibility: fields.visibility ?? "PUBLIC",
+    ...(fields.platform !== undefined ? { platform: fields.platform } : {}),
+    ...(fields.gameServer !== undefined
+      ? { gameServer: fields.gameServer }
+      : {}),
     gameName: fields.gameName,
     hostName: fields.hostName,
     scheduledAt: isNaN(date.getTime()) ? "" : date.toISOString(),

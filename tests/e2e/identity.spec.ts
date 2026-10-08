@@ -53,6 +53,15 @@ test("two first-use tabs keep ownership after concurrent creation", async ({
     await route.continue();
   });
   const second = await context.newPage();
+  // If one write commits before the other tab's advisory lookup, the second
+  // deliberate same-time creation now requires confirmation. Ownership and
+  // the single initialization assertions below remain unchanged.
+  for (const tab of [page, second])
+    tab.on("dialog", async (dialog) => {
+      expect(dialog.type()).toBe("confirm");
+      expect(dialog.message()).toContain("同期开局，请核对安排");
+      await dialog.accept();
+    });
   await Promise.all([
     page.goto("/reservation/new"),
     second.goto("/reservation/new"),

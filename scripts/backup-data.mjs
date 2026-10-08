@@ -183,6 +183,101 @@ function validateDatabase(directory) {
           throw new Error("备份缺少招募管理字段");
       }
     }
+    if (migrations.some((row) => row.name === "20261008000100_meeting")) {
+      const columns = new Set(
+        db
+          .prepare('PRAGMA table_info("GameReservation")')
+          .all()
+          .map((row) => row.name),
+      );
+      if (
+        ["platform", "gameServer", "meetingCipher", "meetingVersion"].some(
+          (field) => !columns.has(field),
+        )
+      )
+        throw new Error("备份缺少集合信息字段");
+    }
+    if (
+      migrations.some((row) => row.name === "20261008000200_notifications") &&
+      !db
+        .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name=?")
+        .get("Notification")
+    )
+      throw new Error("备份缺少站内提醒数据表");
+    if (migrations.some((row) => row.name === "20261008000200_notifications")) {
+      const columns = new Set(
+        db
+          .prepare('PRAGMA table_info("Notification")')
+          .all()
+          .map((row) => row.name),
+      );
+      if (
+        [
+          "id",
+          "reservationId",
+          "recipientHash",
+          "eventKey",
+          "kind",
+          "createdAt",
+          "readAt",
+        ].some((field) => !columns.has(field))
+      )
+        throw new Error("备份缺少站内提醒字段");
+    }
+    for (const [migration, table, label, fields] of [
+      [
+        "20261008000300_saved_templates",
+        "UserReservationTemplate",
+        "常用模板",
+        [
+          "id",
+          "userId",
+          "name",
+          "visibility",
+          "gameName",
+          "hostName",
+          "maxPlayers",
+          "description",
+          "platform",
+          "gameServer",
+          "version",
+          "createdAt",
+          "updatedAt",
+        ],
+      ],
+      [
+        "20261008000400_calendar_subscription",
+        "CalendarSubscription",
+        "日历订阅",
+        [
+          "userId",
+          "tokenHash",
+          "userVersion",
+          "version",
+          "includeInvites",
+          "createdAt",
+          "updatedAt",
+        ],
+      ],
+    ]) {
+      if (!migrations.some((row) => row.name === migration)) continue;
+      if (
+        !db
+          .prepare(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name=?",
+          )
+          .get(table)
+      )
+        throw new Error(`备份缺少${label}数据表`);
+      const columns = new Set(
+        db
+          .prepare(`PRAGMA table_info("${table}")`)
+          .all()
+          .map((row) => row.name),
+      );
+      if (fields.some((field) => !columns.has(field)))
+        throw new Error(`备份缺少${label}字段`);
+    }
     return migrations;
   } finally {
     db.close();

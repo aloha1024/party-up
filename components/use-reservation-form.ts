@@ -5,6 +5,7 @@ import {
   submissionKey,
 } from "@/lib/browser-identity";
 import { ClientRequestError, request } from "@/lib/client-request";
+import { confirmScheduleConflict } from "@/lib/confirm-schedule-conflict";
 import { creationResultSchema } from "@/lib/creation-result";
 import {
   readSubmission,
@@ -55,6 +56,8 @@ export function useReservationForm(
       : "";
     return {
       visibility: reservation?.visibility ?? template?.visibility ?? "PUBLIC",
+      platform: reservation?.platform ?? template?.platform ?? "",
+      gameServer: reservation?.gameServer ?? template?.gameServer ?? "",
       gameName: reservation?.gameName ?? template?.gameName ?? "",
       hostName:
         reservation?.hostName ??
@@ -164,10 +167,27 @@ export function useReservationForm(
     startTransition(async () => {
       try {
         await ensureBrowserIdentity();
-        const key = reservation
-          ? undefined
-          : submissionKey(JSON.parse(creationFingerprint(parsed.data)));
-        if (!reservation) setSubmission(readSubmission());
+        const payload = JSON.parse(creationFingerprint(parsed.data));
+        // An unconfirmed creation is a retry of the original operation. Check
+        // its immutable payload before advisory lookup: the first attempt may
+        // already be one of the conflicting reservations.
+        let key =
+          !reservation && readSubmission() ? submissionKey(payload) : undefined;
+        if (
+          !key &&
+          (!reservation ||
+            Date.parse(reservation.scheduledAt) !==
+              Date.parse(parsed.data.scheduledAt)) &&
+          !(await confirmScheduleConflict(
+            parsed.data.scheduledAt,
+            reservation?.id,
+          ))
+        )
+          return;
+        if (!reservation) {
+          key ??= submissionKey(payload);
+          setSubmission(readSubmission());
+        }
         const r = await request(
           reservation
             ? `/api/reservations/${reservation.id}`
@@ -179,6 +199,8 @@ export function useReservationForm(
                   creationFingerprint({ ...parsed.data, visibility: "PUBLIC" }),
                 ),
                 editVersion: reservation.editVersion,
+                platform: parsed.data.platform,
+                gameServer: parsed.data.gameServer,
                 ...(parsed.data.registrationDeadline !== undefined
                   ? { registrationDeadline: parsed.data.registrationDeadline }
                   : {}),

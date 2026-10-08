@@ -38,6 +38,8 @@ async function fixture() {
 test("only the original browser can copy active, full, started or cancelled reservations without private fields", async () => {
   const { owner, input, reservation } = await fixture();
   const expected = {
+    platform: "",
+    gameServer: "",
     visibility: "PUBLIC",
     gameName: input.gameName,
     hostName: input.hostName,
