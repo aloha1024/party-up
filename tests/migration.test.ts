@@ -199,6 +199,7 @@ test("upgrade retains reservations, roster, root and moderator credentials with 
         gameServer: "",
         meetingCipher: null,
         meetingVersion: 0,
+        scheduleVersion: 0,
       },
     );
     assert.deepEqual(
@@ -206,7 +207,13 @@ test("upgrade retains reservations, roster, root and moderator credentials with 
         .prepare("SELECT * FROM Participant")
         .all()
         .map((r) => ({ ...r })),
-      roster.map((r) => ({ ...r, checkedInAt: null, attendanceVersion: 0 })),
+      roster.map((r) => ({
+        ...r,
+        checkedInAt: null,
+        attendanceVersion: 0,
+        acceptedScheduleVersion: 0,
+        scheduleConfirmedAt: null,
+      })),
     );
     assert.equal(
       db.prepare("SELECT COUNT(*) AS count FROM WaitlistEntry").get()!.count,

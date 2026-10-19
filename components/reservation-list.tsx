@@ -6,6 +6,7 @@ import {
 } from "@/components/reservation-filters";
 import { Button } from "@/components/ui/button";
 import { useReservationRefresh } from "@/components/use-reservation-refresh";
+import { ReservationPlatform } from "@/components/reservation-platform";
 import { formatTime } from "@/lib/utils";
 import {
   reservationListUrl,
@@ -22,14 +23,20 @@ export function ReservationList({
   refreshSample,
   tab,
   hasIdentity = true,
+  favorites = false,
 }: {
   listing: ReservationPage;
   refreshSample: string;
   tab?: MyReservationTab;
   hasIdentity?: boolean;
+  favorites?: boolean;
 }) {
   const viewer = useIdentity();
-  const path = tab ? "/my-reservations" : "/";
+  const path = favorites
+    ? "/my-reservations/favorites"
+    : tab
+      ? "/my-reservations"
+      : "/";
   const labels = {
     hosted: "我发起的",
     joined: "我参加的",
@@ -38,13 +45,15 @@ export function ReservationList({
   const category = labels[tab ?? "joined"];
   useReservationRefresh({
     sample: refreshSample,
-    data: { listing, tab, hasIdentity },
+    data: { listing, tab, hasIdentity, favorites },
     scope: JSON.stringify([path, tab, listing.filters]),
     scheduledAt: listing.items.flatMap(recruitmentWakeups),
   });
   const reservations = listing.items;
   const filtered = !!(
     listing.filters.q ||
+    listing.filters.platform ||
+    listing.filters.gameServer ||
     listing.filters.date ||
     listing.filters.view !== "all"
   );
@@ -52,17 +61,21 @@ export function ReservationList({
     <>
       <div className="mb-10 flex flex-wrap items-end justify-between gap-5">
         <div>
-          <p className="eyebrow mb-3">{tab ? "MY PARTIES" : "THE LOBBY"}</p>
+          <p className="eyebrow mb-3">
+            {favorites ? "MY FAVORITES" : tab ? "MY PARTIES" : "THE LOBBY"}
+          </p>
           <h1 className="text-3xl font-bold tracking-tight sm:text-4xl">
-            {tab ? "我的预约" : "游戏预约"}
+            {favorites ? "我的收藏" : tab ? "我的预约" : "游戏预约"}
             <span className="text-lime-300">.</span>
           </h1>
           <p className="mt-3 text-sm text-zinc-400">
-            {tab
-              ? viewer?.mode === "user"
-                ? "显示当前账号的预约，登录同一账号可跨设备查看；游客旧记录需确认关联。"
-                : "仅显示当前浏览器的游客记录。注册登录后可确认关联，跨设备查看。"
-              : "找到你的队友，让下一局准时开始。"}
+            {favorites
+              ? "收藏仅当前账号可见，不占报名名额；已移除或当前无权查看的预约不显示。"
+              : tab
+                ? viewer?.mode === "user"
+                  ? "显示当前账号的预约，登录同一账号可跨设备查看；游客旧记录需确认关联。"
+                  : "仅显示当前浏览器的游客记录。注册登录后可确认关联，跨设备查看。"
+                : "找到你的队友，让下一局准时开始。"}
           </p>
         </div>
         <div className="flex items-center gap-2 text-sm text-zinc-400">
@@ -87,7 +100,42 @@ export function ReservationList({
               </Link>
             </Button>
           ))}
+          {viewer?.mode === "user" && !viewer.user?.mustChangePassword ? (
+            <Button asChild variant="outline">
+              <Link
+                href={reservationListUrl(
+                  "/my-reservations/favorites",
+                  listing.filters,
+                  1,
+                )}
+                prefetch={false}
+              >
+                我的收藏
+              </Link>
+            </Button>
+          ) : (
+            <p className="flex items-center text-sm text-zinc-400">
+              登录账号后可收藏预约
+            </p>
+          )}
         </nav>
+      )}
+      {favorites && (
+        <div className="mb-6">
+          <Button asChild variant="outline">
+            <Link
+              href={reservationListUrl(
+                "/my-reservations",
+                listing.filters,
+                1,
+                "joined",
+              )}
+              prefetch={false}
+            >
+              返回我的预约
+            </Link>
+          </Button>
+        </div>
       )}
       <ReservationFilters listing={listing} path={path} tab={tab} />
       {listing.filters.view === "available" && (
@@ -96,7 +144,13 @@ export function ReservationList({
       <div className="mb-6 flex items-center justify-between border-b border-white/10 pb-4">
         <span className="flex items-center gap-2 text-sm font-medium">
           <Gamepad2 size={18} className="text-lime-300" />
-          {filtered ? "筛选结果" : tab ? category : "全部预约"}{" "}
+          {filtered
+            ? "筛选结果"
+            : favorites
+              ? "全部收藏"
+              : tab
+                ? category
+                : "全部预约"}{" "}
           <span className="ml-1 text-zinc-500">
             {listing.total.toString().padStart(2, "0")}
           </span>
@@ -129,6 +183,10 @@ export function ReservationList({
                 <p className="mt-2 truncate text-sm text-zinc-500">
                   发起人：{r.hostName}
                 </p>
+                <ReservationPlatform
+                  platform={r.platform}
+                  gameServer={r.gameServer}
+                />
                 <div className="mt-6 h-1 rounded-full bg-white/5">
                   <div
                     className="h-1 rounded-full bg-lime-300/70"
@@ -167,25 +225,29 @@ export function ReservationList({
               ? "暂无当前浏览器的预约记录"
               : filtered
                 ? "没有符合条件的预约"
-                : tab
-                  ? tab === "hosted"
-                    ? "你还没有发起预约"
-                    : tab === "waiting"
-                      ? "你还没有候补预约"
-                      : "你还没有参加预约"
-                  : "大厅已就绪，等你开第一局"}
+                : favorites
+                  ? "你还没有收藏预约"
+                  : tab
+                    ? tab === "hosted"
+                      ? "你还没有发起预约"
+                      : tab === "waiting"
+                        ? "你还没有候补预约"
+                        : "你还没有参加预约"
+                    : "大厅已就绪，等你开第一局"}
           </h2>
           <p className="mb-6 mt-3 text-sm text-zinc-400">
             {tab && !hasIdentity
               ? "请使用创建或报名时的浏览器"
               : filtered
-                ? "试试其他游戏名称、日期或状态，或清除筛选条件。"
-                : tab
-                  ? "去大厅寻找队友，或创建自己的预约。"
-                  : "选个游戏、定好时间，把链接发给队友。"}
+                ? "试试其他游戏名称、平台、区服、日期或状态，或清除筛选条件。"
+                : favorites
+                  ? "在预约详情选择收藏，方便稍后回来查看。收藏不会自动报名。"
+                  : tab
+                    ? "去大厅寻找队友，或创建自己的预约。"
+                    : "选个游戏、定好时间，把链接发给队友。"}
           </p>
           <div className="flex gap-3">
-            {tab && (
+            {(tab || favorites) && (
               <Button asChild variant="outline">
                 <Link href="/">去大厅</Link>
               </Button>

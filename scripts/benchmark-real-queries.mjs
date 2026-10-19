@@ -148,12 +148,23 @@ try {
   list("list.deep-page", { page: 100 });
   list("list.search-date", { q: "Board Game 3", date: "2030-01-03" });
   list("list.available", { view: "available" });
+  list("list.platform-server", { platform: "steam", gameServer: "亚洲" });
+  list("list.available-platform-server", {
+    view: "available",
+    platform: "steam",
+    gameServer: "亚洲",
+  });
   list("list.empty", { q: "does-not-exist" });
   list("personal.hosted", { tab: "hosted" }, "dense");
   list("personal.joined", { tab: "joined" }, "dense");
   list("personal.waiting", { tab: "waiting" }, "dense");
   list("personal.sparse", { tab: "joined" }, "sparse");
   list("personal.available", { tab: "joined", view: "available" }, "dense");
+  list(
+    "personal.platform-server",
+    { tab: "joined", platform: "steam", gameServer: "亚洲" },
+    "dense",
+  );
   for (const [name, input, owner] of [
     ["schedule.first", {}, "dense"],
     ["schedule.last", { schedulePage: 100000 }, "dense"],

@@ -19,6 +19,7 @@ export type Reservation = {
   hostName: string;
   isHost: boolean;
   editVersion: number;
+  scheduleVersion?: number;
   endedAt?: string | null;
   scheduledAt: string;
   registrationDeadline?: string | null;
@@ -28,6 +29,8 @@ export type Reservation = {
   status: Status;
   cancellationReason?: string;
   participants: {
+    scheduleConfirmed?: boolean;
+    scheduleConfirmedAt?: string | null;
     checkedInAt?: string | null;
     attendanceVersion?: number;
     id: string;
@@ -50,6 +53,8 @@ export type ReservationSummary = Pick<
   | "id"
   | "gameName"
   | "hostName"
+  | "platform"
+  | "gameServer"
   | "scheduledAt"
   | "registrationDeadline"
   | "recruitmentPaused"

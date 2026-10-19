@@ -129,6 +129,14 @@ function checkRecruitment(r: Row) {
       409,
     );
 }
+function checkScheduleVersion(r: Row, scheduleVersion?: number) {
+  if (scheduleVersion !== undefined && scheduleVersion !== r.scheduleVersion)
+    throw new AppError(
+      "SCHEDULE_CONFLICT",
+      "开玩时间已变化，请刷新后重新确认",
+      409,
+    );
+}
 
 export async function setRecruitment(
   id: string,
@@ -219,6 +227,7 @@ async function promoteWaitlist(tx: Prisma.TransactionClient, id: string) {
         name: entry.name,
         nameKey: entry.nameKey,
         tokenHash: entry.tokenHash,
+        acceptedScheduleVersion: entry.acceptedScheduleVersion,
         joinedAt: new Date(),
       },
     });
@@ -242,11 +251,12 @@ function checkDuplicate(r: Row, name: string, token: string) {
     );
 }
 export async function joinWaitlist(id: string, input: unknown, token: string) {
-  const { name } = joinSchema.strict().parse(input);
+  const { name, scheduleVersion } = joinSchema.strict().parse(input);
   await mutate(id, async (tx, r) => {
     await requireReservationAccess(tx, r, token, false, true);
     checkActive(r);
     checkRecruitment(r);
+    checkScheduleVersion(r, scheduleVersion);
     await rememberMember(tx, r, token);
     checkDuplicate(r, name, token);
     if (r.participants.length < r.maxPlayers)
@@ -259,6 +269,8 @@ export async function joinWaitlist(id: string, input: unknown, token: string) {
         name,
         nameKey: name.toLowerCase(),
         tokenHash: hashToken(token),
+        // Legacy requests without a version must not implicitly accept a reschedule.
+        acceptedScheduleVersion: scheduleVersion ?? 0,
       },
     });
   });
@@ -282,11 +294,12 @@ export async function joinReservation(
   input: unknown,
   token: string,
 ) {
-  const { name } = joinSchema.parse(input);
+  const { name, scheduleVersion } = joinSchema.parse(input);
   await mutate(id, async (tx, r) => {
     await requireReservationAccess(tx, r, token, false, true);
     checkActive(r);
     checkRecruitment(r);
+    checkScheduleVersion(r, scheduleVersion);
     await rememberMember(tx, r, token);
     await promoteWaitlist(tx, id);
     if (
@@ -301,6 +314,8 @@ export async function joinReservation(
         name,
         nameKey: name.toLowerCase(),
         tokenHash: hashToken(token),
+        // Legacy requests without a version must not implicitly accept a reschedule.
+        acceptedScheduleVersion: scheduleVersion ?? 0,
       },
     });
   });
@@ -524,7 +539,9 @@ export async function editReservation(
         data: { name: data.hostName, nameKey: data.hostName.toLowerCase() },
       });
     }
-    if (r.scheduledAt.getTime() !== new Date(data.scheduledAt).getTime()) {
+    const rescheduled =
+      r.scheduledAt.getTime() !== new Date(data.scheduledAt).getTime();
+    if (rescheduled) {
       await tx.participant.updateMany({
         where: { reservationId: id, checkedInAt: { not: null } },
         data: { checkedInAt: null, attendanceVersion: { increment: 1 } },
@@ -544,6 +561,7 @@ export async function editReservation(
         scheduledAt: new Date(data.scheduledAt),
         registrationDeadline: deadline ? new Date(deadline) : null,
         editVersion: { increment: 1 },
+        ...(rescheduled ? { scheduleVersion: { increment: 1 } } : {}),
       },
     });
     await promoteWaitlist(tx, id);

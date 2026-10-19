@@ -14,6 +14,7 @@
     "typecheck": "tsc --noEmit",
     "test:unit": "node scripts/run-tests.mjs --unit",
     "test:e2e": "node scripts/run-tests.mjs --e2e",
+    "test:ci": "node scripts/run-tests.mjs --ci",
     "benchmark:queries": "node scripts/benchmark-queries.mjs"
   },
   "dependencies": {

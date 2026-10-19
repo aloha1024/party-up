@@ -2,6 +2,7 @@ import "./support/isolated";
 import { after, test } from "node:test";
 import assert from "node:assert/strict";
 import { randomBytes, randomUUID } from "node:crypto";
+import type { Prisma } from "@prisma/client";
 import { db } from "../server/db";
 import { registeredToken, testCookie } from "./support/member";
 import {
@@ -55,6 +56,135 @@ after(async () => {
   await db.gameReservation.deleteMany({ where: { id: { in: ids } } });
   await db.adminAuditLog.deleteMany({ where: { targetId: { in: ids } } });
   await db.$disconnect();
+});
+
+test("notification list skips empty reads while preserving snapshot, pagination and identity isolation", async (t) => {
+  const f = await fixture();
+  const recipients = [token(), await registeredToken()];
+  const original = db.$transaction;
+  const transaction = original.bind(db);
+  const calls: string[] = [];
+  const settings: unknown[] = [];
+  t.after(() => {
+    db.$transaction = original;
+  });
+  // Delegate calls are not raw SQL counts: included relations may use more SQL.
+  db.$transaction = ((
+    run: (tx: Prisma.TransactionClient) => Promise<unknown>,
+    options?: { isolationLevel?: Prisma.TransactionIsolationLevel },
+  ) => {
+    settings.push(options);
+    return transaction(
+      (tx) =>
+        run(
+          new Proxy(tx, {
+            get(target, key, receiver) {
+              const delegate = Reflect.get(target, key, receiver);
+              if (key !== "notification") return delegate;
+              return new Proxy(delegate, {
+                get(model, method, modelReceiver) {
+                  const value = Reflect.get(model, method, modelReceiver);
+                  if (typeof value !== "function") return value;
+                  return (...args: unknown[]) => {
+                    calls.push(String(method));
+                    return Reflect.apply(value, model, args);
+                  };
+                },
+              });
+            },
+          }),
+        ),
+      options,
+    );
+  }) as typeof db.$transaction;
+  const empty = { items: [], total: 0, page: 1, pageCount: 1, unreadCount: 0 };
+  async function read(
+    recipient: string | undefined,
+    unread: "all" | "unread",
+    expectedCalls: string[],
+    page = 999,
+  ) {
+    calls.length = 0;
+    settings.length = 0;
+    const result = await listNotifications(recipient, { unread, page });
+    assert.deepEqual(calls, expectedCalls);
+    assert.deepEqual(
+      settings,
+      expectedCalls.length ? [{ isolationLevel: "Serializable" }] : [],
+    );
+    return result;
+  }
+  for (const invalid of [undefined, "invalid"])
+    for (const unread of ["all", "unread"] as const)
+      assert.deepEqual(await read(invalid, unread, []), empty);
+
+  for (const recipient of recipients) {
+    for (const unread of ["all", "unread"] as const)
+      assert.deepEqual(await read(recipient, unread, ["count"]), empty);
+    await db.notification.createMany({
+      data: Array.from({ length: 25 }, (_, index) => ({
+        reservationId: f.id,
+        recipientHash: digest(recipient),
+        kind: "RESCHEDULED",
+        eventKey: `read-count:${f.id}:${index}`,
+        readAt: index < 4 ? new Date("2030-01-01T00:00:00Z") : null,
+      })),
+    });
+    const rows = await db.notification.findMany({
+      where: { recipientHash: digest(recipient) },
+      orderBy: { id: "desc" },
+    });
+    for (const unread of ["all", "unread"] as const) {
+      const expected =
+        unread === "unread" ? rows.filter((row) => !row.readAt) : rows;
+      for (const page of [1, 999]) {
+        const result = await read(
+          recipient,
+          unread,
+          unread === "all"
+            ? ["count", "count", "findMany"]
+            : ["count", "findMany"],
+          page,
+        );
+        assert.equal(result.total, expected.length);
+        assert.equal(result.unreadCount, 21);
+        assert.equal(result.page, page === 1 ? 1 : 2);
+        assert.equal(result.pageCount, 2);
+        assert.deepEqual(
+          result.items.map((row) => row.id),
+          expected
+            .slice(page === 1 ? 0 : 20, page === 1 ? 20 : 40)
+            .map((row) => row.id),
+        );
+      }
+    }
+    await markNotificationsRead(recipient, { all: true });
+    assert.deepEqual(await read(recipient, "unread", ["count"]), empty);
+    const allRead = await read(recipient, "all", [
+      "count",
+      "count",
+      "findMany",
+    ]);
+    assert.equal(allRead.total, 25);
+    assert.equal(allRead.unreadCount, 0);
+    const arrival = await db.notification.create({
+      data: {
+        reservationId: f.id,
+        recipientHash: digest(recipient),
+        kind: "PROMOTED",
+        eventKey: `arrival:${f.id}`,
+      },
+    });
+    const fresh = await read(recipient, "unread", ["count", "findMany"]);
+    assert.equal(fresh.total, 1);
+    assert.equal(fresh.unreadCount, 1);
+    assert.equal(fresh.page, 1);
+    assert.deepEqual(
+      fresh.items.map((row) => row.id),
+      [arrival.id],
+    );
+    assert.deepEqual(await read(token(), "all", ["count"]), empty);
+  }
 });
 
 test("events reach current affected identities without self-notifications, private payloads or retry duplicates", async () => {

@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useId, useState, type FormEvent } from "react";
 import Link from "next/link";
 import { Button } from "./ui/button";
 import { useIdentity } from "./identity-provider";
@@ -15,9 +15,11 @@ import { UserSessions } from "./user-sessions";
 function Password({
   name = "password",
   label = "密码",
+  purpose,
 }: {
   name?: string;
   label?: string;
+  purpose: "current-password" | "new-password";
 }) {
   return (
     <label className="block space-y-2">
@@ -26,14 +28,26 @@ function Password({
         className="field"
         name={name}
         type="password"
-        autoComplete={
-          name === "currentPassword" ? "current-password" : "new-password"
-        }
+        autoComplete={purpose}
         required
         minLength={10}
         maxLength={128}
       />
     </label>
+  );
+}
+function PasswordUsername({ username }: { username: string }) {
+  const id = useId();
+  // Associate the password manager's account without adding a JSON form field.
+  return (
+    <input
+      id={id}
+      type="text"
+      autoComplete="username"
+      value={username}
+      readOnly
+      hidden
+    />
   );
 }
 export function UserAccount({
@@ -195,9 +209,16 @@ export function UserAccount({
                 />
               </label>
             )}
-            <Password label={mode === "recover" ? "新密码" : "密码"} />
+            <Password
+              label={mode === "recover" ? "新密码" : "密码"}
+              purpose={mode === "login" ? "current-password" : "new-password"}
+            />
             {mode !== "login" && (
-              <Password name="confirmation" label="确认密码" />
+              <Password
+                name="confirmation"
+                label="确认密码"
+                purpose="new-password"
+              />
             )}
             <Button disabled={pending}>{pending ? "正在处理…" : title}</Button>
             <p className="text-sm text-zinc-400">
@@ -250,9 +271,18 @@ export function UserAccount({
               }
             >
               <h2>修改密码</h2>
-              <Password name="currentPassword" label="当前密码" />
-              <Password label="新密码" />
-              <Password name="confirmation" label="确认新密码" />
+              <PasswordUsername username={viewer.user?.username ?? ""} />
+              <Password
+                name="currentPassword"
+                label="当前密码"
+                purpose="current-password"
+              />
+              <Password label="新密码" purpose="new-password" />
+              <Password
+                name="confirmation"
+                label="确认新密码"
+                purpose="new-password"
+              />
               <Button disabled={pending}>修改密码并重新登录</Button>
             </form>
             {!viewer.user?.mustChangePassword && (
@@ -267,10 +297,11 @@ export function UserAccount({
                   }
                 >
                   <h2>生成新的恢复码</h2>
+                  <PasswordUsername username={viewer.user?.username ?? ""} />
                   <p className="text-sm text-zinc-400">
                     旧恢复码立即失效，新码仅展示一次。
                   </p>
-                  <Password label="当前密码" />
+                  <Password label="当前密码" purpose="current-password" />
                   <Button disabled={pending}>生成恢复码</Button>
                 </form>
                 <GuestClaims />

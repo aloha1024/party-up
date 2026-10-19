@@ -86,6 +86,7 @@ export async function listNotifications(token?: string, input: unknown = {}) {
           ...(filters.unread === "unread" ? { readAt: null } : {}),
         };
         const total = await tx.notification.count({ where });
+        if (total === 0) return empty;
         const unreadCount =
           filters.unread === "unread"
             ? total

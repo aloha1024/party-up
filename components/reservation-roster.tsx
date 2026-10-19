@@ -42,6 +42,17 @@ export function ReservationRoster({
             <span className="min-w-0 flex-1 break-words font-medium">
               {p.name}
               {p.isMe && <span className="ml-2 text-xs text-lime-300">你</span>}
+              {!!r.scheduleVersion && (
+                <span
+                  className={`mt-1 block text-xs font-normal ${p.scheduleConfirmed ? "text-lime-300" : "text-amber-300"}`}
+                >
+                  {p.scheduleConfirmed
+                    ? p.scheduleConfirmedAt
+                      ? `已确认新时间 · ${formatTime(p.scheduleConfirmedAt)}（北京时间）`
+                      : "报名时已认可新时间"
+                    : "未确认改期"}
+                </span>
+              )}
               <span className="mt-1 block text-xs font-normal text-zinc-400">
                 {p.checkedInAt
                   ? `已到场 · ${formatTime(p.checkedInAt)}（北京时间）`

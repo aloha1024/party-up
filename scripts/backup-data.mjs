@@ -224,6 +224,26 @@ function validateDatabase(directory) {
       )
         throw new Error("备份缺少站内提醒字段");
     }
+    if (
+      migrations.some(
+        (row) => row.name === "20261008000600_schedule_confirmation",
+      )
+    ) {
+      for (const [table, fields] of [
+        ["GameReservation", ["scheduleVersion"]],
+        ["Participant", ["acceptedScheduleVersion", "scheduleConfirmedAt"]],
+        ["WaitlistEntry", ["acceptedScheduleVersion"]],
+      ]) {
+        const columns = new Set(
+          db
+            .prepare(`PRAGMA table_info("${table}")`)
+            .all()
+            .map((row) => row.name),
+        );
+        if (fields.some((field) => !columns.has(field)))
+          throw new Error("备份缺少改期确认字段");
+      }
+    }
     for (const [migration, table, label, fields] of [
       [
         "20261008000300_saved_templates",
@@ -258,6 +278,12 @@ function validateDatabase(directory) {
           "createdAt",
           "updatedAt",
         ],
+      ],
+      [
+        "20261008000500_reservation_favorites",
+        "UserReservationFavorite",
+        "预约收藏",
+        ["id", "userId", "reservationId", "createdAt"],
       ],
     ]) {
       if (!migrations.some((row) => row.name === migration)) continue;

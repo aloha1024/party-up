@@ -8,37 +8,39 @@ datasource db {
 }
 
 model GameReservation {
-  id                   String              @id @default(cuid())
+  id                   String                    @id @default(cuid())
   gameName             String
   hostName             String
   hostTokenHash        String?
   scheduledAt          DateTime
   registrationDeadline DateTime?
-  recruitmentPaused    Boolean             @default(false)
+  recruitmentPaused    Boolean                   @default(false)
   maxPlayers           Int
-  description          String              @default("")
-  platform             String              @default("")
-  gameServer           String              @default("")
+  description          String                    @default("")
+  platform             String                    @default("")
+  gameServer           String                    @default("")
   meetingCipher        String?
-  meetingVersion       Int                 @default(0)
-  status               String              @default("OPEN")
+  meetingVersion       Int                       @default(0)
+  status               String                    @default("OPEN")
   endedAt              DateTime?
   deletedAt            DateTime?
-  cancellationReason   String              @default("")
-  revision             Int                 @default(0)
-  editVersion          Int                 @default(0)
-  createdAt            DateTime            @default(now())
-  updatedAt            DateTime            @updatedAt
+  cancellationReason   String                    @default("")
+  revision             Int                       @default(0)
+  editVersion          Int                       @default(0)
+  scheduleVersion      Int                       @default(0)
+  createdAt            DateTime                  @default(now())
+  updatedAt            DateTime                  @updatedAt
   participants         Participant[]
   waitlist             WaitlistEntry[]
   changes              ReservationChange[]
   removals             RosterRemoval[]
-  visibility           String              @default("PUBLIC")
-  inviteVersion        Int                 @default(1)
+  visibility           String                    @default("PUBLIC")
+  inviteVersion        Int                       @default(1)
   inviteHash           String?
   inviteCipher         String?
   access               ReservationAccess[]
   notifications        Notification[]
+  favorites            UserReservationFavorite[]
 
   @@index([scheduledAt])
   @@index([deletedAt, scheduledAt, id])
@@ -81,15 +83,17 @@ model ReservationChange {
 }
 
 model Participant {
-  id                String          @id @default(cuid())
-  reservationId     String
-  name              String
-  nameKey           String
-  tokenHash         String
-  checkedInAt       DateTime?
-  attendanceVersion Int             @default(0)
-  joinedAt          DateTime        @default(now())
-  reservation       GameReservation @relation(fields: [reservationId], references: [id], onDelete: Cascade)
+  id                      String          @id @default(cuid())
+  reservationId           String
+  name                    String
+  nameKey                 String
+  tokenHash               String
+  checkedInAt             DateTime?
+  attendanceVersion       Int             @default(0)
+  acceptedScheduleVersion Int             @default(0)
+  scheduleConfirmedAt     DateTime?
+  joinedAt                DateTime        @default(now())
+  reservation             GameReservation @relation(fields: [reservationId], references: [id], onDelete: Cascade)
 
   @@unique([reservationId, nameKey])
   @@unique([reservationId, tokenHash])
@@ -97,13 +101,14 @@ model Participant {
 }
 
 model WaitlistEntry {
-  id            Int             @id @default(autoincrement())
-  reservationId String
-  name          String
-  nameKey       String
-  tokenHash     String
-  joinedAt      DateTime        @default(now())
-  reservation   GameReservation @relation(fields: [reservationId], references: [id], onDelete: Cascade)
+  id                      Int             @id @default(autoincrement())
+  reservationId           String
+  name                    String
+  nameKey                 String
+  tokenHash               String
+  acceptedScheduleVersion Int             @default(0)
+  joinedAt                DateTime        @default(now())
+  reservation             GameReservation @relation(fields: [reservationId], references: [id], onDelete: Cascade)
 
   @@unique([reservationId, nameKey])
   @@unique([reservationId, tokenHash])
@@ -176,6 +181,7 @@ model User {
   claims               GuestClaim[]
   templates            UserReservationTemplate[]
   calendarSubscription CalendarSubscription?
+  favorites            UserReservationFavorite[]
 }
 
 model CalendarSubscription {
@@ -257,4 +263,16 @@ model Notification {
   @@index([recipientHash, id])
   @@index([recipientHash, readAt, id])
   @@index([reservationId])
+}
+
+model UserReservationFavorite {
+  id            Int             @id @default(autoincrement())
+  userId        String
+  reservationId String
+  createdAt     DateTime        @default(now())
+  user          User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  reservation   GameReservation @relation(fields: [reservationId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, reservationId])
+  @@index([userId, id])
 }

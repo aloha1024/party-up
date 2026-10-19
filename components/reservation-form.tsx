@@ -3,10 +3,45 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import type { Reservation, ReservationTemplate } from "@/types/reservation";
 import { Loader2, Zap } from "lucide-react";
+import { useEffect, useRef, type ReactNode } from "react";
+import type { ReservationFields } from "@/lib/reservation-draft";
+import { reservationFieldLabels } from "@/lib/reservation-form-validation";
 
-import { Back, Field } from "./reservation-ui";
+import { Back } from "./reservation-ui";
 import { useReservationForm } from "./use-reservation-form";
 import { useIdentity } from "./identity-provider";
+
+function FormField({
+  id,
+  title,
+  error,
+  children,
+}: {
+  id: string;
+  title: string;
+  error?: string;
+  children: ReactNode;
+}) {
+  return (
+    <div className="space-y-2.5">
+      <label htmlFor={id} className="block text-sm font-medium text-zinc-300">
+        {title}
+      </label>
+      {children}
+      {error && (
+        <p id={`${id}-error`} className="text-sm text-red-400">
+          {error}
+        </p>
+      )}
+    </div>
+  );
+}
+
+function focusError(target: HTMLElement | null) {
+  target?.focus({ preventScroll: true });
+  target?.scrollIntoView({ block: "center", behavior: "auto" });
+}
+
 export function CreateForm({
   reservation: initialReservation,
   template,
@@ -22,6 +57,8 @@ export function CreateForm({
     conflict,
     pending,
     error,
+    fieldErrors,
+    failureVersion,
     field,
     recoverable,
     draftReady,
@@ -37,6 +74,24 @@ export function CreateForm({
     discardDraft,
     reloadEditor,
   } = useReservationForm(initialReservation, template);
+  const formRef = useRef<HTMLFormElement>(null);
+  const summaryRef = useRef<HTMLDivElement>(null);
+  const focusedFailure = useRef(0);
+  useEffect(() => {
+    if (pending || failureVersion === focusedFailure.current) return;
+    focusedFailure.current = failureVersion;
+    focusError(
+      formRef.current?.querySelector<HTMLElement>('[aria-invalid="true"]') ??
+        summaryRef.current,
+    );
+  }, [failureVersion, pending]);
+  const feedback = (name: keyof ReservationFields) => ({
+    id: field(name).id,
+    error: fieldErrors[name],
+  });
+  const invalidFields = (
+    Object.keys(reservationFieldLabels) as (keyof ReservationFields)[]
+  ).filter((name) => fieldErrors[name]);
   return (
     <div className="mx-auto max-w-2xl">
       <Back />
@@ -62,7 +117,43 @@ export function CreateForm({
               : "已复制旧预约配置，请重新选择日期和时间。报名名单不会复制，新预约将使用新的分享链接。"
             : "填好开局信息，分享链接就能召集队友。"}
       </p>
-      <form className="panel space-y-6 p-6 sm:p-8" onSubmit={submit}>
+      <form
+        ref={formRef}
+        noValidate
+        className="panel space-y-6 p-6 sm:p-8"
+        onSubmit={submit}
+      >
+        {(error || invalidFields.length > 0) && (
+          <div
+            ref={summaryRef}
+            role="alert"
+            tabIndex={-1}
+            className="space-y-2 rounded-xl border border-red-400/30 bg-red-400/5 p-4 text-sm text-red-300 outline-none focus:ring-2 focus:ring-red-400"
+          >
+            <p>{error || "请检查以下内容后再提交："}</p>
+            {invalidFields.length > 0 && (
+              <ul className="space-y-1">
+                {invalidFields.map((name) => (
+                  <li key={name}>
+                    <button
+                      type="button"
+                      className="text-left underline underline-offset-4"
+                      onClick={() =>
+                        focusError(
+                          formRef.current?.elements.namedItem(
+                            name,
+                          ) as HTMLElement | null,
+                        )
+                      }
+                    >
+                      {reservationFieldLabels[name]}：{fieldErrors[name]}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        )}
         {template && restoredDraft && (
           <p role="status" className="text-sm text-lime-300">
             已恢复旧草稿，当前内容以草稿为准，请核对日期和时间。
@@ -157,7 +248,7 @@ export function CreateForm({
           disabled={!draftReady || pending || !!recoverable}
         >
           {!reservation && (
-            <Field title="预约可见性">
+            <FormField title="预约可见性" {...feedback("visibility")}>
               <select
                 className="field"
                 {...field("visibility")}
@@ -174,43 +265,51 @@ export function CreateForm({
               <p className="mt-2 text-xs text-zinc-400">
                 创建后不可切换。邀请制预约不在公共大厅显示。
               </p>
-            </Field>
+            </FormField>
           )}
-          <Field title="游戏名称">
+          <FormField title="游戏名称" {...feedback("gameName")}>
             <Input
               {...field("gameName")}
               placeholder="例如：Valorant / 无畏契约"
               maxLength={80}
               required
             />
-          </Field>
+          </FormField>
           {reservation?.participants.some((p) => p.checkedInAt) && (
             <p className="text-sm text-amber-300">
               修改开玩时间将清空已有到场确认，参与者需要重新确认；仅修改其他内容不会清空。
             </p>
           )}
+          {reservation && (
+            <p className="text-sm text-amber-300">
+              修改开玩时间后，现有正式参与者（包括发起人本人）需在新开局前重新确认参加，未确认仍保留名额，不会自动退出。改期前加入的候补在递补后也需确认新时间。
+            </p>
+          )}
           <div className="grid gap-5 sm:grid-cols-2">
-            <Field title="游戏平台（选填）">
+            <FormField title="游戏平台（选填）" {...feedback("platform")}>
               <Input {...field("platform")} maxLength={80} />
-            </Field>
-            <Field title="区服（选填）">
+            </FormField>
+            <FormField title="区服（选填）" {...feedback("gameServer")}>
               <Input {...field("gameServer")} maxLength={80} />
-            </Field>
+            </FormField>
           </div>
           <p className="text-xs text-zinc-400">
             平台和区服对有预约查看权限的人可见。房间密码请在创建后的详情页填写集合信息，不要放入备注。
           </p>
           <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
-            <Field title="预约日期">
+            <FormField title="预约日期" {...feedback("date")}>
               <Input type="date" {...field("date")} required />
-            </Field>
-            <Field title="开玩时间 · 北京时间">
+            </FormField>
+            <FormField title="开玩时间 · 北京时间" {...feedback("time")}>
               <Input type="time" {...field("time")} required />
-            </Field>
+            </FormField>
           </div>
-          <Field title="报名截止时间 · 北京时间（选填）">
+          <FormField
+            title="报名截止时间 · 北京时间（选填）"
+            {...feedback("deadline")}
+          >
             <Input type="datetime-local" step="1" {...field("deadline")} />
-          </Field>
+          </FormField>
           <p className="text-sm text-zinc-400">
             留空表示开局前均可报名。截止后停止新报名、新候补和自动递补；改期不会自动移动截止时间。
             {reservation?.recruitmentPaused
@@ -218,15 +317,18 @@ export function CreateForm({
               : ""}
           </p>
           <div className="grid gap-5 sm:grid-cols-2">
-            <Field title="发起人昵称">
+            <FormField title="发起人昵称" {...feedback("hostName")}>
               <Input
                 {...field("hostName")}
                 placeholder="队友怎么称呼你？"
                 maxLength={24}
                 required
               />
-            </Field>
-            <Field title="最大参与人数 · 含发起人">
+            </FormField>
+            <FormField
+              title="最大参与人数 · 含发起人"
+              {...feedback("maxPlayers")}
+            >
               <Input
                 {...field("maxPlayers")}
                 type="number"
@@ -234,16 +336,16 @@ export function CreateForm({
                 max={100}
                 required
               />
-            </Field>
+            </FormField>
           </div>
-          <Field title="备注（选填）">
+          <FormField title="备注（选填）" {...feedback("description")}>
             <textarea
               {...field("description")}
               className="field min-h-28 resize-y"
               maxLength={1000}
               placeholder="游戏模式、语音方式，或想对队友说的话…"
             />
-          </Field>
+          </FormField>
         </fieldset>
         <p className="text-xs text-zinc-500">
           {reservation
@@ -260,11 +362,6 @@ export function CreateForm({
               ? "草稿仅保存在此浏览器标签页，刷新后可选择恢复；成功保存后自动清除。"
               : "浏览器未能保存草稿，刷新或离开前请复制需要保留的内容。"}
         </p>
-        {error && (
-          <p role="alert" className="text-sm text-red-400">
-            {error}
-          </p>
-        )}
         {conflict && reservation && (
           <div className="space-y-3 rounded-xl border border-amber-300/30 bg-amber-300/5 p-4">
             <p className="text-sm text-zinc-300">

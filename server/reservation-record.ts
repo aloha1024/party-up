@@ -40,6 +40,7 @@ export function serializeReservation(
     id: r.id,
     visibility: r.visibility as "PUBLIC" | "INVITE",
     editVersion: r.editVersion,
+    scheduleVersion: r.scheduleVersion,
     endedAt: r.endedAt?.toISOString() ?? null,
     gameName: r.gameName,
     hostName: r.hostName,
@@ -59,6 +60,11 @@ export function serializeReservation(
       isMe: !!token && p.tokenHash === hashToken(token),
     })),
     participants: r.participants.map((p) => ({
+      scheduleConfirmed: p.acceptedScheduleVersion === r.scheduleVersion,
+      scheduleConfirmedAt:
+        p.acceptedScheduleVersion === r.scheduleVersion
+          ? (p.scheduleConfirmedAt?.toISOString() ?? null)
+          : null,
       checkedInAt: p.checkedInAt?.toISOString() ?? null,
       attendanceVersion: p.attendanceVersion,
       isHost: p.tokenHash === r.hostTokenHash,

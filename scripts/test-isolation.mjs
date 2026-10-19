@@ -6,7 +6,7 @@ export function assertIsolatedTestEnvironment(env = process.env) {
   const root = env.PARTY_TEST_ROOT;
   const fail = () => {
     throw new Error(
-      "测试仅允许通过 npm test 或 npm run test:unit 在自动创建的临时数据库上运行",
+      "测试仅允许通过 npm test、npm run test:unit、npm run test:e2e 或 npm run test:ci 在自动创建的临时数据库上运行",
     );
   };
   if (!root || !env.PARTY_TEST_TOKEN || env.PARTY_TEST_TOKEN.length < 32)

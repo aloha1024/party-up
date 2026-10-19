@@ -1,9 +1,9 @@
 "use client";
-import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Button } from "./ui/button";
 import { request } from "../lib/client-request";
+import { useAdminFeedback } from "./use-admin-feedback";
 type Item = {
   id: string;
   username: string;
@@ -19,22 +19,28 @@ export function AdminUsers({
   listing: { items: Item[]; page: number; pageCount: number; total: number };
   q: string;
 }) {
-  const router = useRouter();
-  const [error, setError] = useState(""),
-    [pending, setPending] = useState(false),
+  const [hydrated, setHydrated] = useState(false);
+  useEffect(() => setHydrated(true), []);
+  const {
+    error,
+    setError,
+    checkOnline,
+    handleError,
+    refreshAfterSuccess,
+    refreshStatus,
+  } = useAdminFeedback();
+  const [pending, setPending] = useState(false),
     [reset, setReset] = useState<Item>(),
     [password, setPassword] = useState("");
   async function manage(user: Item, action: string) {
-    if (!navigator.onLine) {
-      setError("当前离线，请联网后确认账号状态");
-      return;
-    }
+    if (pending || !checkOnline()) return;
     if (
       !window.confirm(
         `确认对普通账号“${user.username}”执行${action === "reset" ? "重置密码" : action === "revoke" ? "撤销所有登录" : action === "disable" ? "停用" : "启用"}？`,
       )
     )
       return;
+    if (!checkOnline()) return;
     setPending(true);
     setError("");
     try {
@@ -45,16 +51,21 @@ export function AdminUsers({
       });
       setPassword("");
       setReset(undefined);
-      router.refresh();
+      refreshAfterSuccess();
     } catch (e) {
-      setError((e as Error).message + " 不会自动重发，请刷新核对。");
+      handleError(e);
     } finally {
       setPending(false);
     }
   }
   return (
     <section className="space-y-5">
-      <form className="flex gap-3">
+      <noscript>
+        <p className="text-sm text-amber-300">
+          密码操作需要启用 JavaScript，请启用后刷新页面。
+        </p>
+      </noscript>
+      <form method="get" className="flex gap-3">
         <input
           className="field"
           name="q"
@@ -67,9 +78,19 @@ export function AdminUsers({
       </form>
       <p>共 {listing.total} 个普通账号</p>
       {error && (
-        <p role="alert" className="text-red-300">
-          {error}
-        </p>
+        <div className="space-y-3">
+          <p role="alert" className="text-red-300">
+            {error}
+          </p>
+          <Button
+            type="button"
+            variant="outline"
+            disabled={pending}
+            onClick={refreshStatus}
+          >
+            刷新核对状态
+          </Button>
+        </div>
       )}
       {listing.items.map((user) => (
         <div className="panel space-y-3 p-5" key={user.id}>
@@ -97,7 +118,7 @@ export function AdminUsers({
             </Button>
             <Button
               variant="outline"
-              disabled={pending}
+              disabled={!hydrated || pending}
               onClick={() => {
                 setReset(user);
                 setPassword("");
@@ -110,38 +131,45 @@ export function AdminUsers({
       ))}
       {reset && (
         <form
-          className="panel space-y-4 p-5"
+          method="post"
+          className="panel p-5"
           onSubmit={(e) => {
             e.preventDefault();
+            if (!hydrated || pending) return;
             void manage(reset, "reset");
           }}
         >
-          <h2>重置 {reset.username} 的密码</h2>
-          <p className="text-sm text-zinc-400">
-            请先核实用户身份。旧登录及恢复码失效，下次登录必须改密；不会自动启用账号。
-          </p>
-          <input
-            className="field"
-            aria-label="临时密码"
-            type="password"
-            autoComplete="new-password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            minLength={10}
-            maxLength={128}
-            required
-          />
-          <Button disabled={pending}>确认重置</Button>
-          <Button
-            type="button"
-            variant="ghost"
-            onClick={() => {
-              setReset(undefined);
-              setPassword("");
-            }}
+          <fieldset
+            disabled={!hydrated || pending}
+            className="min-w-0 space-y-4"
           >
-            取消
-          </Button>
+            <h2>重置 {reset.username} 的密码</h2>
+            <p className="text-sm text-zinc-400">
+              请先核实用户身份。旧登录及恢复码失效，下次登录必须改密；不会自动启用账号。
+            </p>
+            <input
+              className="field"
+              aria-label="临时密码"
+              type="password"
+              autoComplete="new-password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              minLength={10}
+              maxLength={128}
+              required
+            />
+            <Button disabled={pending}>确认重置</Button>
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={() => {
+                setReset(undefined);
+                setPassword("");
+              }}
+            >
+              取消
+            </Button>
+          </fieldset>
         </form>
       )}
       <nav className="flex gap-4">

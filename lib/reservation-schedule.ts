@@ -38,6 +38,11 @@ export type ScheduleItem = ReservationSummary & {
   checkedInAt: string | null;
   attendance: "closed" | "waiting" | "ready" | "confirmed" | null;
   simultaneous: boolean;
+  scheduleConfirmation?: {
+    confirmed: boolean;
+    confirmedAt: string | null;
+    locked: boolean;
+  } | null;
 };
 export type SchedulePage = {
   items: ScheduleItem[];

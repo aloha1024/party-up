@@ -1,5 +1,13 @@
 import { test, expect, type Page } from "@playwright/test";
 import { randomUUID } from "node:crypto";
+async function openCreation(page: Page) {
+  const response = await page.goto("/reservation/new");
+  expect(
+    response?.status(),
+    "创建页必须返回 HTTP 200；请先检查测试服务和测试域名连接",
+  ).toBe(200);
+}
+
 async function fill(page: Page, name: string) {
   await page.getByLabel("游戏名称", { exact: true }).fill(name);
   await page
@@ -62,10 +70,7 @@ test("two first-use tabs keep ownership after concurrent creation", async ({
       expect(dialog.message()).toContain("同期开局，请核对安排");
       await dialog.accept();
     });
-  await Promise.all([
-    page.goto("/reservation/new"),
-    second.goto("/reservation/new"),
-  ]);
+  await Promise.all([openCreation(page), openCreation(second)]);
   if (info.project.name === "http-fallback") {
     expect(await page.evaluate(() => window.isSecureContext)).toBe(false);
     expect(await page.evaluate(() => !!navigator.locks)).toBe(false);
@@ -99,7 +104,7 @@ test("blocked cookies stop creation with actionable error", async ({
     mutations++;
     await route.continue();
   });
-  await page.goto("/reservation/new");
+  await openCreation(page);
   await fill(page, "Cookie-" + randomUUID());
   await page.getByRole("button", { name: "创建预约，召集队友" }).click();
   await expect(page.locator('form [role="alert"]')).toContainText(
@@ -126,7 +131,7 @@ test("HTTP without local storage fails before issuing a new identity", async ({
     if (route.request().method() === "POST") initializations++;
     await route.continue();
   });
-  await page.goto("/reservation/new");
+  await openCreation(page);
   await fill(page, "Storage-" + randomUUID());
   await page.getByRole("button", { name: "创建预约，召集队友" }).click();
   await expect(page.locator('form [role="alert"]')).toContainText(
@@ -142,7 +147,7 @@ test("existing HTTP identity still creates when IndexedDB is blocked", async ({
     info.project.name !== "http-fallback",
     "HTTP storage fallback only",
   );
-  await page.goto("/reservation/new");
+  await openCreation(page);
   // Use the browser's fetch: party-http.test is resolved by its launch options.
   const initialized = await page.evaluate(async () => {
     const response = await fetch("/api/identity", {

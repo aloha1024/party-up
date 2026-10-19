@@ -159,6 +159,27 @@ export function ReservationSchedule({
                       {r.attendance === "ready" && " · 进入详情确认"}
                     </p>
                   )}
+                  {r.scheduleConfirmation && (
+                    <p
+                      className={`mt-2 text-sm ${r.scheduleConfirmation.confirmed ? "text-lime-300" : "text-amber-300"}`}
+                      data-schedule-confirmation={
+                        r.scheduleConfirmation.confirmed
+                          ? "confirmed"
+                          : "pending"
+                      }
+                    >
+                      {r.scheduleConfirmation.confirmed
+                        ? r.scheduleConfirmation.confirmedAt
+                          ? `已确认新时间 · ${formatTime(r.scheduleConfirmation.confirmedAt)}（北京时间）`
+                          : "报名时已认可新时间"
+                        : "未确认改期"}
+                      {r.scheduleConfirmation.locked
+                        ? " · 改期确认已锁定"
+                        : !r.scheduleConfirmation.confirmed
+                          ? " · 进入详情确认，未确认仍保留名额"
+                          : ""}
+                    </p>
+                  )}
                   {r.simultaneous && (
                     <p className="mt-2 text-sm text-amber-300">
                       同期开局，请核对安排

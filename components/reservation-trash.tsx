@@ -1,11 +1,11 @@
 "use client";
 import { request } from "@/lib/client-request";
-import { useState, useTransition } from "react";
-import { useRouter } from "next/navigation";
+import { useTransition } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { useReservationRefresh } from "@/components/use-reservation-refresh";
 import { TrashFilters, TrashPagination } from "@/components/trash-filters";
+import { useAdminFeedback } from "@/components/use-admin-feedback";
 import type { TrashItem, TrashPage } from "@/types/reservation-trash";
 const deletionDate = new Intl.DateTimeFormat("zh-CN", {
   timeZone: "Asia/Shanghai",
@@ -23,9 +23,15 @@ export function ReservationTrash({
   listing: TrashPage;
   refreshSample: string;
 }) {
-  const router = useRouter();
   const [pending, start] = useTransition();
-  const [error, setError] = useState("");
+  const {
+    error,
+    setError,
+    checkOnline,
+    handleError,
+    refreshAfterSuccess,
+    refreshStatus,
+  } = useAdminFeedback();
   useReservationRefresh({
     sample: refreshSample,
     data: listing,
@@ -33,6 +39,7 @@ export function ReservationTrash({
     paused: pending,
   });
   function action(item: TrashItem, method: "POST" | "DELETE") {
+    if (pending || !checkOnline()) return;
     if (
       method === "DELETE" &&
       !window.confirm(
@@ -42,6 +49,7 @@ export function ReservationTrash({
       return;
     setError("");
     start(async () => {
+      if (!checkOnline()) return;
       try {
         await request("/api/admin/trash/" + item.id, method);
         toast.success(
@@ -49,10 +57,9 @@ export function ReservationTrash({
             ? "预约已恢复，原链接和名单已保留"
             : "预约已永久删除",
         );
+        refreshAfterSuccess();
       } catch (e) {
-        setError(e instanceof Error ? e.message : "请求失败");
-      } finally {
-        router.refresh();
+        handleError(e);
       }
     });
   }
@@ -63,9 +70,19 @@ export function ReservationTrash({
       </p>
       <TrashFilters listing={listing} />
       {error && (
-        <p role="alert" className="text-red-400">
-          {error}
-        </p>
+        <div className="space-y-3">
+          <p role="alert" className="text-red-400">
+            {error}
+          </p>
+          <Button
+            type="button"
+            variant="outline"
+            disabled={pending}
+            onClick={refreshStatus}
+          >
+            刷新核对状态
+          </Button>
+        </div>
       )}
       {listing.items.map((item) => (
         <div

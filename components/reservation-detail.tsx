@@ -2,8 +2,11 @@
 import { RegisteredFeature, useIdentity } from "./identity-provider";
 import { InvitationEntry, InvitationManager } from "./reservation-invitation";
 import { ReservationAttendance } from "./reservation-attendance";
+import { ReservationScheduleConfirmation } from "./reservation-schedule-confirmation";
 import { ReservationRecruitment } from "./reservation-recruitment";
 import { ReservationMeeting } from "./reservation-meeting";
+import { ReservationFavorite } from "./reservation-favorite";
+import type { FavoriteStatus } from "../lib/reservation-favorites";
 import { recruitmentClosure } from "../lib/recruitment";
 import { attendanceOpensAt } from "../lib/reservation-attendance";
 import { CancelReservation } from "@/components/cancel-reservation";
@@ -37,12 +40,14 @@ export function ReservationDetail({
   refreshSample,
   history,
   removals,
+  favorite = null,
 }: {
   reservation: Reservation;
   admin?: boolean;
   refreshSample: string;
   history: HistoryPage;
   removals: RemovalPage & { scope: string };
+  favorite?: FavoriteStatus | null;
 }) {
   const router = useRouter();
   const viewer = useIdentity();
@@ -57,6 +62,8 @@ export function ReservationDetail({
   const [managing, setManaging] = useState(false);
   const [recruiting, setRecruiting] = useState(false);
   const [meetingPending, setMeetingPending] = useState(false);
+  const [favoritePending, setFavoritePending] = useState(false);
+  const [scheduleConfirming, setScheduleConfirming] = useState(false);
   const [action, setAction] = useState<RosterAction | null>(null);
   useEffect(() => {
     setAction(null);
@@ -68,10 +75,12 @@ export function ReservationDetail({
     inviting ||
     attending ||
     recruiting ||
-    meetingPending;
+    meetingPending ||
+    favoritePending ||
+    scheduleConfirming;
   useReservationRefresh({
     sample: refreshSample,
-    data: { reservation: r, admin },
+    data: { reservation: r, admin, favorite },
     scope: r.id,
     scheduledAt: [
       attendanceOpensAt(r.scheduledAt).toISOString(),
@@ -106,7 +115,9 @@ export function ReservationDetail({
         await request(
           `/api/reservations/${r.id}/${queue ? "waitlist" : "participants"}`,
           method,
-          method === "POST" ? { name } : undefined,
+          method === "POST"
+            ? { name, scheduleVersion: r.scheduleVersion ?? 0 }
+            : undefined,
         );
         toast.success(
           queue
@@ -156,6 +167,13 @@ export function ReservationDetail({
         ) : (
           <ReservationShare reservation={r} />
         )}
+        <ReservationFavorite
+          key={r.id}
+          id={r.id}
+          favorite={favorite}
+          refreshSample={refreshSample}
+          onPendingChange={setFavoritePending}
+        />
         {r.isHost && (
           <RegisteredFeature label="再开一局">
             <Button asChild variant="outline">
@@ -179,6 +197,12 @@ export function ReservationDetail({
             </Button>
           )}
       </div>
+      <ReservationScheduleConfirmation
+        key={r.id}
+        reservation={r}
+        disabled={refreshPaused && !scheduleConfirming}
+        onPendingChange={setScheduleConfirming}
+      />
       <ReservationAttendance
         key={r.id}
         reservation={r}

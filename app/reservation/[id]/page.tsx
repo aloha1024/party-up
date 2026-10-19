@@ -16,16 +16,14 @@ export default async function Page({
   try {
     const token = await pageIdentity();
     const admin = await currentAdmin();
-    const { reservation, history, removals } = await reservationPageData(
-      id,
-      token,
-      admin,
-    );
+    const { reservation, history, removals, favorite } =
+      await reservationPageData(id, token, admin);
     return (
       <ReservationDetail
         history={history}
         admin={!!admin}
         removals={removals}
+        favorite={favorite}
         reservation={reservation}
         refreshSample={randomUUID()}
       />

@@ -87,9 +87,14 @@ export async function listMySchedule(
           select: {
             ...summarySelect,
             hostTokenHash: true,
+            scheduleVersion: true,
             participants: {
               where: { tokenHash: hash },
-              select: { checkedInAt: true },
+              select: {
+                checkedInAt: true,
+                acceptedScheduleVersion: true,
+                scheduleConfirmedAt: true,
+              },
               take: 1,
             },
             waitlist: {
@@ -144,6 +149,18 @@ export async function listMySchedule(
             isParticipant: !!me,
             isWaiting: !!row.waitlist.length,
             checkedInAt: me?.checkedInAt?.toISOString() ?? null,
+            scheduleConfirmation:
+              me && row.scheduleVersion > 0
+                ? {
+                    confirmed:
+                      me.acceptedScheduleVersion === row.scheduleVersion,
+                    confirmedAt:
+                      me.acceptedScheduleVersion === row.scheduleVersion
+                        ? (me.scheduleConfirmedAt?.toISOString() ?? null)
+                        : null,
+                    locked: closed || now >= row.scheduledAt,
+                  }
+                : null,
             attendance: !me
               ? null
               : closed

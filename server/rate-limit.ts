@@ -90,6 +90,7 @@ export function limitWrite(headers: Headers, path: string, token?: string) {
       : path === "/api/reservations"
         ? "create"
         : path.includes("/attendance") ||
+            path.endsWith("/schedule-confirmation") ||
             path.includes("/participants") ||
             path.includes("/waitlist") ||
             path.includes("/roster-removals")

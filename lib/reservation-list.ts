@@ -18,6 +18,8 @@ export const reservationListSchema = z.object({
     .transform((value) => value.normalize("NFKC"))
     .pipe(z.string().max(80, "搜索内容最多 80 字"))
     .default(""),
+  platform: z.string().trim().max(80, "平台筛选最多 80 字").default(""),
+  gameServer: z.string().trim().max(80, "区服筛选最多 80 字").default(""),
   view: z
     .enum(["all", "upcoming", "available", "started", "cancelled", "ended"], {
       error: "预约状态筛选无效",
@@ -32,11 +34,20 @@ export const myReservationListSchema = reservationListSchema.extend({
   tab: z.enum(["joined", "hosted", "waiting"]).default("joined"),
 });
 export type MyReservationTab = z.infer<typeof myReservationListSchema>["tab"];
-export type ReservationListPath = "/" | "/admin" | "/my-reservations";
+export type ReservationListPath =
+  "/" | "/admin" | "/my-reservations" | "/my-reservations/favorites";
 export type PageSearchParams = Record<string, string | string[] | undefined>;
 export function listSearchParams(params: URLSearchParams): PageSearchParams {
   const result: PageSearchParams = {};
-  for (const key of ["q", "view", "date", "page", "pageSize"]) {
+  for (const key of [
+    "q",
+    "platform",
+    "gameServer",
+    "view",
+    "date",
+    "page",
+    "pageSize",
+  ]) {
     const values = params.getAll(key);
     if (values.length) result[key] = values.length === 1 ? values[0] : values;
   }
@@ -51,6 +62,8 @@ export function reservationListUrl(
   const query = new URLSearchParams();
   if (path === "/my-reservations" && tab) query.set("tab", tab);
   if (filters.q) query.set("q", filters.q);
+  if (filters.platform) query.set("platform", filters.platform);
+  if (filters.gameServer) query.set("gameServer", filters.gameServer);
   if (filters.view !== "all") query.set("view", filters.view);
   if (filters.date) query.set("date", filters.date);
   if (filters.pageSize !== 12) query.set("pageSize", String(filters.pageSize));

@@ -31,6 +31,85 @@ after(async () => {
 });
 const token = () => randomBytes(32).toString("hex");
 const now = new Date("2030-01-01T16:00:00Z");
+
+test("personal schedule shows only the current participant's reschedule acknowledgement and locks at the exact start", async () => {
+  const me = token();
+  const r = await seed(me, { joined: true });
+  const other = token();
+  await db.participant.create({
+    data: {
+      reservationId: r.id,
+      name: "Other",
+      nameKey: "other",
+      tokenHash: digest(other),
+      acceptedScheduleVersion: 2,
+      scheduleConfirmedAt: now,
+    },
+  });
+  assert.equal(
+    (await listMySchedule({ range: "week" }, me, now)).items[0]
+      .scheduleConfirmation,
+    null,
+  );
+  await db.gameReservation.update({
+    where: { id: r.id },
+    data: { scheduleVersion: 2 },
+  });
+  const read = async (at = now) =>
+    (await listMySchedule({ range: "week" }, me, at)).items[0]
+      .scheduleConfirmation;
+  assert.deepEqual(await read(), {
+    confirmed: false,
+    confirmedAt: null,
+    locked: false,
+  });
+  await db.participant.updateMany({
+    where: { reservationId: r.id, tokenHash: digest(me) },
+    data: { acceptedScheduleVersion: 1, scheduleConfirmedAt: now },
+  });
+  assert.deepEqual(await read(), {
+    confirmed: false,
+    confirmedAt: null,
+    locked: false,
+  });
+  await db.participant.updateMany({
+    where: { reservationId: r.id, tokenHash: digest(me) },
+    data: { acceptedScheduleVersion: 2 },
+  });
+  assert.deepEqual(await read(), {
+    confirmed: true,
+    confirmedAt: now.toISOString(),
+    locked: false,
+  });
+  assert.deepEqual(await read(r.scheduledAt), {
+    confirmed: true,
+    confirmedAt: now.toISOString(),
+    locked: true,
+  });
+  assert.deepEqual(
+    (await listMySchedule({ range: "week" }, other, now)).items[0]
+      .scheduleConfirmation,
+    { confirmed: true, confirmedAt: now.toISOString(), locked: false },
+  );
+  await db.gameReservation.update({
+    where: { id: r.id },
+    data: { status: "CANCELLED" },
+  });
+  assert.equal((await read())!.locked, true);
+  const hostOnly = await seed(me, { host: true });
+  const queuedOnly = await seed(me, { waiting: true });
+  await db.gameReservation.updateMany({
+    where: { id: { in: [hostOnly.id, queuedOnly.id] } },
+    data: { scheduleVersion: 2 },
+  });
+  const page = await listMySchedule({ range: "week" }, me, now);
+  for (const id of [hostOnly.id, queuedOnly.id])
+    assert.equal(
+      page.items.find((row) => row.id === id)!.scheduleConfirmation,
+      null,
+    );
+});
+
 async function seed(
   owner: string,
   options: {

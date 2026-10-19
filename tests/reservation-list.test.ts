@@ -178,10 +178,12 @@ test("list pagination crosses the upcoming/past boundary without duplicates, exp
   assert.equal(pages[2].items[0].status, "STARTED");
   assert.deepEqual(Object.keys(pages[0].items[0]).sort(), [
     "gameName",
+    "gameServer",
     "hostName",
     "id",
     "maxPlayers",
     "participantCount",
+    "platform",
     "recruitmentPaused",
     "registrationDeadline",
     "scheduledAt",

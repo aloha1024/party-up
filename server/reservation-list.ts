@@ -17,6 +17,8 @@ const select = {
   visibility: true,
   gameName: true,
   hostName: true,
+  platform: true,
+  gameServer: true,
   scheduledAt: true,
   registrationDeadline: true,
   recruitmentPaused: true,
@@ -86,6 +88,10 @@ async function queryReservations(
         { hostName: { contains: filters.q } },
       ],
     });
+  if (filters.platform)
+    conditions.push({ platform: { contains: filters.platform } });
+  if (filters.gameServer)
+    conditions.push({ gameServer: { contains: filters.gameServer } });
   if (filters.view === "upcoming")
     conditions.push({
       scheduledAt: { gt: now },
@@ -156,6 +162,8 @@ async function queryReservations(
             visibility: row.visibility as "PUBLIC" | "INVITE",
             gameName: row.gameName,
             hostName: row.hostName,
+            platform: row.platform,
+            gameServer: row.gameServer,
             scheduledAt: row.scheduledAt.toISOString(),
             registrationDeadline:
               row.registrationDeadline?.toISOString() ?? null,
@@ -192,6 +200,12 @@ async function availableReservations(
     Prisma.sql`(SELECT COUNT(*) FROM "Participant" p WHERE p."reservationId" = r."id") < r."maxPlayers"`,
   ];
   if (publicOnly) conditions.push(Prisma.sql`r."visibility" = 'PUBLIC'`);
+  if (filters.platform)
+    conditions.push(Prisma.sql`r."platform" LIKE ${`%${filters.platform}%`}`);
+  if (filters.gameServer)
+    conditions.push(
+      Prisma.sql`r."gameServer" LIKE ${`%${filters.gameServer}%`}`,
+    );
   if (filters.q) {
     // Match Prisma SQLite contains semantics, including LIKE wildcards and ASCII case folding.
     const pattern = `%${filters.q}%`;
@@ -243,6 +257,8 @@ async function availableReservations(
               visibility: row.visibility as "PUBLIC" | "INVITE",
               gameName: row.gameName,
               hostName: row.hostName,
+              platform: row.platform,
+              gameServer: row.gameServer,
               scheduledAt: row.scheduledAt.toISOString(),
               registrationDeadline:
                 row.registrationDeadline?.toISOString() ?? null,

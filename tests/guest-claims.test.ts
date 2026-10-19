@@ -338,6 +338,8 @@ test("guest preview matches the original fingerprint, ordering, conflict priorit
 for (const changed of [
   "participant name",
   "attendance",
+  "schedule confirmation",
+  "waiting schedule",
   "waitlist",
   "grant",
   "account creation",
@@ -373,6 +375,16 @@ for (const changed of [
       await db.participant.updateMany({
         where: { reservationId: r.id },
         data: { checkedInAt: new Date(0), attendanceVersion: { increment: 1 } },
+      });
+    else if (changed === "schedule confirmation")
+      await db.participant.updateMany({
+        where: { reservationId: r.id },
+        data: { acceptedScheduleVersion: 2, scheduleConfirmedAt: new Date(0) },
+      });
+    else if (changed === "waiting schedule")
+      await db.waitlistEntry.updateMany({
+        where: { reservationId: r.id },
+        data: { acceptedScheduleVersion: 2 },
       });
     else if (changed === "waitlist")
       await db.waitlistEntry.updateMany({
@@ -410,6 +422,60 @@ for (const changed of [
 }
 
 type DelegateCall = { model: string; operation: string; args: unknown };
+
+test("guest linking preserves schedule acknowledgement and waiting versions without confirming either identity implicitly", async () => {
+  const a = await account();
+  const confirmedAt = new Date("2030-01-01T00:00:00Z");
+  const joined = await reservation({
+    scheduleVersion: 3,
+    participants: {
+      create: {
+        name: "Guest",
+        nameKey: "guest",
+        tokenHash: a.guestHash,
+        acceptedScheduleVersion: 3,
+        scheduleConfirmedAt: confirmedAt,
+      },
+    },
+  });
+  const waiting = await reservation({
+    scheduleVersion: 3,
+    waitlist: {
+      create: {
+        name: "Waiting guest",
+        nameKey: "waiting guest",
+        tokenHash: a.guestHash,
+        acceptedScheduleVersion: 2,
+      },
+    },
+  });
+  const beforeParticipant = await db.participant.findFirstOrThrow({
+    where: { reservationId: joined.id },
+  });
+  const beforeWaiter = await db.waitlistEntry.findFirstOrThrow({
+    where: { reservationId: waiting.id },
+  });
+  await submit(a.viewer, [joined.id, waiting.id]);
+  assert.deepEqual(
+    await db.participant.findUniqueOrThrow({
+      where: { id: beforeParticipant.id },
+    }),
+    { ...beforeParticipant, tokenHash: a.userHash },
+  );
+  assert.deepEqual(
+    await db.waitlistEntry.findUniqueOrThrow({
+      where: { id: beforeWaiter.id },
+    }),
+    { ...beforeWaiter, tokenHash: a.userHash },
+  );
+  assert.equal(
+    await db.reservationChange.count({
+      where: { reservationId: { in: [joined.id, waiting.id] } },
+    }),
+    0,
+  );
+});
+
 function trackTransactionDelegates(t: TestContext) {
   const calls: DelegateCall[] = [];
   const original = db.$transaction;

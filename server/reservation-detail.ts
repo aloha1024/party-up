@@ -3,6 +3,7 @@ import { db } from "./db";
 import { AppError } from "./errors";
 import { requireReservationAccess } from "./reservation-access";
 import { readReservationHistory } from "./reservation-history";
+import { readFavoriteStatus } from "./reservation-favorites";
 import { readRosterRemovals, type ViewerAdmin } from "./roster-removals";
 import { remainingBudget } from "./request-budget";
 import { measureTransaction } from "./request-metrics";
@@ -12,13 +13,15 @@ import {
 } from "./reservation-record";
 
 export async function detail(id: string, token?: string, admin = false) {
-  return db.$transaction(async (tx) => {
-    const r = await tx.gameReservation.findUnique({ where: { id }, include });
-    if (!r || r.deletedAt)
-      throw new AppError("NOT_FOUND", "预约不存在或已被移除", 404);
-    await requireReservationAccess(tx, r, token, admin);
-    return serialize(r, token, admin);
-  });
+  return measureTransaction(() =>
+    db.$transaction(async (tx) => {
+      const r = await tx.gameReservation.findUnique({ where: { id }, include });
+      if (!r || r.deletedAt)
+        throw new AppError("NOT_FOUND", "预约不存在或已被移除", 404);
+      await requireReservationAccess(tx, r, token, admin);
+      return serialize(r, token, admin);
+    }),
+  );
 }
 
 // The page's detail and first history pages share one authorized read snapshot.
@@ -43,7 +46,8 @@ export async function reservationPageData(
         const reservation = serialize(r, token, !!admin);
         const history = await readReservationHistory(tx, id);
         const removals = await readRosterRemovals(tx, r, token, admin);
-        return { reservation, history, removals };
+        const favorite = await readFavoriteStatus(tx, r, token, !admin);
+        return { reservation, history, removals, favorite };
       },
       {
         isolationLevel: Prisma.TransactionIsolationLevel.Serializable,

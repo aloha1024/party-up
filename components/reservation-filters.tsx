@@ -28,6 +28,8 @@ export function ReservationFilters({
       key={JSON.stringify([
         tab,
         filters.q,
+        filters.platform,
+        filters.gameServer,
         filters.view,
         filters.date,
         filters.pageSize,
@@ -36,15 +38,16 @@ export function ReservationFilters({
       method="get"
       role="search"
       aria-label="筛选预约"
-      className="panel mb-6 grid gap-4 p-4 sm:grid-cols-2 lg:grid-cols-[2fr_1fr_1fr_auto]"
+      className="panel mb-6 grid gap-4 p-4 sm:grid-cols-2 lg:grid-cols-3"
       onSubmit={(event) => {
         event.preventDefault();
         const form = new FormData(event.currentTarget);
         const query = new URLSearchParams();
         if (tab) query.set("tab", tab);
-        for (const name of ["q", "view", "date"]) {
+        for (const name of ["q", "platform", "gameServer", "view", "date"]) {
           const value = String(form.get(name) || "").trim();
-          if (value && value !== "all") query.set(name, value);
+          if (value && !(name === "view" && value === "all"))
+            query.set(name, value);
         }
         if (filters.pageSize !== 12)
           query.set("pageSize", String(filters.pageSize));
@@ -63,6 +66,26 @@ export function ReservationFilters({
           maxLength={80}
           defaultValue={filters.q}
           placeholder="游戏名称或发起人"
+        />
+      </label>
+      <label className="min-w-0 space-y-2 text-sm">
+        <span>平台</span>
+        <Input
+          name="platform"
+          type="search"
+          maxLength={80}
+          defaultValue={filters.platform}
+          placeholder="如 PC、PS5、Switch"
+        />
+      </label>
+      <label className="min-w-0 space-y-2 text-sm">
+        <span>区服</span>
+        <Input
+          name="gameServer"
+          type="search"
+          maxLength={80}
+          defaultValue={filters.gameServer}
+          placeholder="如国服、亚服"
         />
       </label>
       <label className="min-w-0 space-y-2 text-sm">

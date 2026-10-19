@@ -1,8 +1,9 @@
 import Link from "next/link";
+import type { ReservationListPath } from "@/lib/reservation-list";
 export function InvalidReservationFilters({
   path = "/",
 }: {
-  path?: "/" | "/admin" | "/my-reservations";
+  path?: ReservationListPath;
 }) {
   return (
     <div className="panel space-y-4 p-6">

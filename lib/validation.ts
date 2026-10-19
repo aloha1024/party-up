@@ -4,7 +4,15 @@ const text = (max: number) =>
 export const nickname = text(24)
   .transform((v) => v.normalize("NFKC"))
   .pipe(text(24));
-export const joinSchema = z.object({ name: nickname });
+export const joinSchema = z.object({
+  name: nickname,
+  scheduleVersion: z
+    .number()
+    .int()
+    .nonnegative()
+    .max(Number.MAX_SAFE_INTEGER)
+    .optional(),
+});
 export const creationInputSchema = z.object({
   platform: z.string().trim().max(80, "平台最多 80 字").optional(),
   gameServer: z.string().trim().max(80, "区服最多 80 字").optional(),

@@ -17,6 +17,8 @@ test("new feature diagnostics allow exact source names and never include excepti
     "notifications",
     "reservation-conflicts",
     "saved-templates",
+    "reservation-favorites",
+    "reservation-schedule-confirmation",
     "calendar-subscription",
     "admin-statistics",
   ]) {

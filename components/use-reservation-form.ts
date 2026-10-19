@@ -13,7 +13,6 @@ import {
 } from "@/lib/creation-submission";
 import {
   clearDraft,
-  creationInputFromFields,
   draftMatchesSubmission,
   draftMatchesVersion,
   readDraft,
@@ -21,12 +20,16 @@ import {
   type ReservationDraft,
   type ReservationFields,
 } from "@/lib/reservation-draft";
-import { createSchema, creationFingerprint } from "@/lib/validation";
-import { deadlineError } from "../lib/recruitment";
+import { creationFingerprint } from "@/lib/validation";
+import {
+  validateReservationForm,
+  type ReservationFieldErrors,
+} from "@/lib/reservation-form-validation";
 import type { Reservation, ReservationTemplate } from "@/types/reservation";
 import { useRouter } from "next/navigation";
 import {
   useEffect,
+  useId,
   useState,
   useTransition,
   type ChangeEvent,
@@ -47,6 +50,11 @@ export function useReservationForm(
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState("");
+  const [fieldErrors, setFieldErrors] = useState<ReservationFieldErrors>({});
+  const [serverErrorField, setServerErrorField] =
+    useState<keyof ReservationFields>();
+  const [failureVersion, setFailureVersion] = useState(0);
+  const fieldPrefix = useId();
   const [restoredDraft, setRestoredDraft] = useState(false);
   const [fields, setFields] = useState<ReservationFields>(() => {
     const localTime = reservation
@@ -88,8 +96,13 @@ export function useReservationForm(
     setDraftReady(true);
   }, [reservation]);
   const field = (name: keyof ReservationFields) => ({
+    id: `${fieldPrefix}-${name}`,
     name,
     value: fields[name] ?? "",
+    "aria-invalid": fieldErrors[name] ? true : undefined,
+    "aria-describedby": fieldErrors[name]
+      ? `${fieldPrefix}-${name}-error`
+      : undefined,
     onChange: (
       event: ChangeEvent<
         HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement
@@ -97,6 +110,24 @@ export function useReservationForm(
     ) => {
       const next = { ...fields, [name]: event.target.value };
       setFields(next);
+      if (Object.keys(fieldErrors).length) {
+        const nextErrors = validateReservationForm(
+          next,
+          reservation,
+        ).fieldErrors;
+        setFieldErrors(
+          Object.fromEntries(
+            Object.keys(fieldErrors).flatMap((key) => {
+              // A stale page cannot revalidate a server-side roster conflict.
+              if (key === serverErrorField && name !== key)
+                return [[key, fieldErrors[key]!]];
+              const message = nextErrors[key as keyof ReservationFields];
+              return message ? [[key, message]] : [];
+            }),
+          ),
+        );
+      }
+      if (name === serverErrorField) setServerErrorField(undefined);
       setDraftSaved(saveDraft(next, reservation?.id, reservation?.editVersion));
     },
   });
@@ -149,19 +180,14 @@ export function useReservationForm(
     event.preventDefault();
     if (!draftReady || recoverable || pending || conflict) return;
     setError("");
-    const input = creationInputFromFields(fields, reservation);
-    const parsed = createSchema.safeParse(input);
-    if (!parsed.success) {
-      setError(parsed.error.issues[0].message);
-      return;
-    }
-    const cutoffError = deadlineError(
-      parsed.data.scheduledAt,
-      parsed.data.registrationDeadline,
-      reservation?.registrationDeadline,
+    setServerErrorField(undefined);
+    const { parsed, fieldErrors: nextErrors } = validateReservationForm(
+      fields,
+      reservation,
     );
-    if (cutoffError) {
-      setError(cutoffError);
+    setFieldErrors(nextErrors);
+    if (!parsed.success || Object.keys(nextErrors).length) {
+      setFailureVersion((value) => value + 1);
       return;
     }
     startTransition(async () => {
@@ -217,7 +243,20 @@ export function useReservationForm(
         router.push(`/reservation/${r.id}`);
         router.refresh();
       } catch (e) {
-        setError((e as Error).message);
+        if (
+          reservation &&
+          e instanceof ClientRequestError &&
+          ["CAPACITY", "DUPLICATE"].includes(e.serverCode ?? "")
+        ) {
+          setServerErrorField(
+            e.serverCode === "CAPACITY" ? "maxPlayers" : "hostName",
+          );
+          setFieldErrors({
+            [e.serverCode === "CAPACITY" ? "maxPlayers" : "hostName"]:
+              e.message,
+          });
+        } else setError((e as Error).message);
+        setFailureVersion((value) => value + 1);
         if (e instanceof ClientRequestError && e.serverCode === "EDIT_CONFLICT")
           setConflict(true);
       }
@@ -265,6 +304,8 @@ export function useReservationForm(
     conflict,
     pending,
     error,
+    fieldErrors,
+    failureVersion,
     field,
     recoverable,
     draftReady,

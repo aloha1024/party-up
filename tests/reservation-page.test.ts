@@ -9,6 +9,9 @@ import { reservationHistory } from "../server/reservation-history";
 import { rosterRemovals } from "../server/roster-removals";
 import { withRequestBudget } from "../server/request-budget";
 import { requestMetrics, withRequestMetrics } from "../server/request-metrics";
+import { AppError } from "../server/errors";
+import { errorDiagnostics, requestContext } from "../server/request-log";
+import { registeredToken } from "./support/member";
 
 const ids: string[] = [];
 const secret = () => randomBytes(32).toString("hex");
@@ -131,6 +134,8 @@ function trackReads(t: TestContext) {
                   "rosterRemoval",
                   "participant",
                   "waitlistEntry",
+                  "user",
+                  "userReservationFavorite",
                 ].includes(String(key))
               )
                 return delegate;
@@ -176,8 +181,219 @@ async function previousPage(
     reservation: await detail(id, token, !!actor),
     history: await reservationHistory(id, undefined, token, !!actor),
     removals: await rosterRemovals(id, token, actor),
+    favorite: null,
   };
 }
+
+test("detail transactions measure success and failures without changing reads, errors or private logs", async (t) => {
+  const publicFixture = await fixture();
+  const invited = await fixture(true);
+  const deleted = await fixture();
+  await db.gameReservation.update({
+    where: { id: deleted.id },
+    data: { deletedAt: new Date() },
+  });
+  const failure = new Error(
+    "private nickname password invite-token SQL and exception content",
+  );
+  const cases = [
+    {
+      id: publicFixture.id,
+      expected: await detail(publicFixture.id),
+      accessReads: 0,
+    },
+    {
+      id: invited.id,
+      token: invited.visitor,
+      expected: await detail(invited.id, invited.visitor),
+      accessReads: 1,
+    },
+    {
+      id: invited.id,
+      admin: true,
+      expected: await detail(invited.id, undefined, true),
+      accessReads: 0,
+    },
+    {
+      id: invited.id,
+      token: secret(),
+      code: "INVITATION_REQUIRED",
+      accessReads: 1,
+      membershipReads: 1,
+    },
+    { id: randomUUID(), code: "NOT_FOUND", accessReads: 0 },
+    { id: deleted.id, code: "NOT_FOUND", accessReads: 0 },
+    { id: publicFixture.id, code: "INTERNAL", failure, accessReads: 0 },
+  ];
+  const reads = trackReads(t);
+  const tracked = db.$transaction;
+  let injectedFailure: Error | undefined;
+  let clock = 100000;
+  t.mock.method(performance, "now", () => clock);
+  const lines: string[] = [];
+  for (const level of ["info", "warn", "error"] as const)
+    t.mock.method(console, level, (line: string) => lines.push(line));
+  db.$transaction = ((
+    run: (tx: Prisma.TransactionClient) => Promise<unknown>,
+    options?: Options,
+  ) => {
+    clock += 7;
+    return tracked
+      .call(
+        db,
+        async (tx: Prisma.TransactionClient) => {
+          const result = await run(tx);
+          if (injectedFailure) throw injectedFailure;
+          return result;
+        },
+        options,
+      )
+      .finally(() => {
+        clock += 11;
+      });
+  }) as typeof db.$transaction;
+  try {
+    for (const scenario of cases) {
+      reads.reset();
+      lines.length = 0;
+      injectedFailure = scenario.failure;
+      await withRequestMetrics(async () => {
+        const context = requestContext(
+          "GET",
+          `/api/reservations/${scenario.id}`,
+        );
+        let caught: unknown;
+        let result: Awaited<ReturnType<typeof detail>> | undefined;
+        try {
+          result = await detail(scenario.id, scenario.token, scenario.admin);
+        } catch (error) {
+          caught = error;
+        }
+        if (scenario.failure) assert.equal(caught, scenario.failure);
+        else if (scenario.code) {
+          assert.ok(caught instanceof AppError);
+          assert.equal(caught.code, scenario.code);
+          assert.equal(caught.status, 404);
+        } else {
+          assert.equal(caught, undefined);
+          assert.deepEqual(result, scenario.expected);
+        }
+        assert.deepEqual(requestMetrics(), {
+          transactionAttempts: 1,
+          transactionRetries: 0,
+          transactionMs: 18,
+          busy: false,
+        });
+        const status =
+          caught instanceof AppError ? caught.status : caught ? 503 : 200;
+        context.finish(
+          status,
+          scenario.code,
+          scenario.failure ? errorDiagnostics(caught) : undefined,
+        );
+        context.finish(status, scenario.code);
+        assert.equal(lines.length, 1);
+        const log = JSON.parse(lines[0]);
+        assert.equal(log.status, status);
+        assert.equal(log.code, scenario.code ?? "OK");
+        assert.equal(log.route, "/api/reservations/:id");
+        assert.equal(log.transactionAttempts, 1);
+        assert.equal(log.transactionRetries, 0);
+        assert.equal(log.transactionMs, 18);
+        assert.equal(log.busy, false);
+        for (const value of [
+          scenario.id,
+          scenario.token,
+          publicFixture.host,
+          hashToken(publicFixture.host),
+          "详情合并测试",
+          "发起人",
+          "private-invite-cipher",
+          "private-invite-hash",
+          failure.message,
+          process.cwd(),
+        ])
+          if (value) assert.equal(lines[0].includes(value), false);
+      });
+      assert.equal(requestMetrics(), undefined);
+      assert.equal(reads.transactions(), 1);
+      assert.equal(reads.count("gameReservation.findUnique"), 1);
+      assert.equal(
+        reads.count("reservationAccess.findUnique"),
+        scenario.accessReads,
+      );
+      assert.equal(
+        reads.count("participant.count"),
+        scenario.membershipReads ?? 0,
+      );
+      assert.equal(
+        reads.count("waitlistEntry.count"),
+        scenario.membershipReads ?? 0,
+      );
+      assert.equal(
+        reads.calls.length,
+        1 + scenario.accessReads + 2 * (scenario.membershipReads ?? 0),
+      );
+      assert.deepEqual(reads.options, [undefined]);
+    }
+  } finally {
+    db.$transaction = tracked;
+  }
+});
+
+test("overlapping detail requests keep separate metrics and calls outside a request stay uninstrumented", async () => {
+  const f = await fixture(true);
+  assert.equal(requestMetrics(), undefined);
+  const expected = await detail(f.id, f.visitor);
+  assert.equal(requestMetrics(), undefined);
+  let release!: () => void;
+  let entered!: () => void;
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const started = new Promise<void>((resolve) => {
+    entered = resolve;
+  });
+  const original = db.$transaction;
+  let calls = 0;
+  db.$transaction = (async (
+    run: (tx: Prisma.TransactionClient) => Promise<unknown>,
+    options?: Options,
+  ) => {
+    if (++calls === 1) {
+      entered();
+      await gate;
+    }
+    return original.call(db, run, options);
+  }) as typeof db.$transaction;
+  const first = withRequestMetrics(async () => {
+    assert.deepEqual(await detail(f.id, f.visitor), expected);
+    await detail(f.id, f.visitor);
+    return requestMetrics()!;
+  });
+  try {
+    await started;
+    const second = await withRequestMetrics(async () => {
+      assert.deepEqual(await detail(f.id, f.visitor), expected);
+      return requestMetrics()!;
+    });
+    assert.equal(second.transactionAttempts, 1);
+    assert.equal(second.transactionRetries, 0);
+    assert.equal(second.busy, false);
+    release();
+    const firstMetrics = await first;
+    assert.equal(firstMetrics.transactionAttempts, 2);
+    assert.equal(firstMetrics.transactionRetries, 0);
+    assert.equal(firstMetrics.busy, false);
+    assert.ok(firstMetrics.transactionMs >= 0 && second.transactionMs >= 0);
+    assert.equal(calls, 3);
+    assert.equal(requestMetrics(), undefined);
+  } finally {
+    release();
+    await first.catch(() => {});
+    db.$transaction = original;
+  }
+});
 
 test("detail page shares one bounded transaction and one reservation/invitation read, preserving the old page data", async (t) => {
   const f = await fixture(true);
@@ -477,4 +693,43 @@ test("expired page request budget rejects before opening a transaction", async (
     });
   });
   assert.equal(reads.transactions(), 0);
+});
+
+test("account detail reads favorite state in the same snapshot without rechecking invitation access", async (t) => {
+  const f = await fixture(true);
+  const token = await registeredToken();
+  const user = await db.user.findUniqueOrThrow({
+    where: { identityKey: token.slice(5) },
+  });
+  t.after(() => db.user.delete({ where: { id: user.id } }));
+  await db.reservationAccess.create({
+    data: {
+      reservationId: f.id,
+      tokenHash: hashToken(token),
+      inviteVersion: 1,
+    },
+  });
+  await db.userReservationFavorite.create({
+    data: { userId: user.id, reservationId: f.id },
+  });
+  const reads = trackReads(t);
+  const page = await reservationPageData(f.id, token);
+  assert.deepEqual(page.favorite, { saved: true, allowed: true });
+  assert.equal(reads.transactions(), 1);
+  assert.equal(reads.count("gameReservation.findUnique"), 1);
+  assert.equal(reads.count("reservationAccess.findUnique"), 1);
+  assert.equal(reads.count("userReservationFavorite.findUnique"), 1);
+  assert.ok(reads.calls.every((call) => call.transaction === 1));
+  assert.equal("favorite" in (await detail(f.id, token)), false);
+  await db.gameReservation.update({
+    where: { id: f.id },
+    data: { inviteVersion: 2 },
+  });
+  // The independent admin identity can inspect details, but cannot grant the
+  // normal account a bookmark's invitation access.
+  const privileged = await reservationPageData(f.id, token, admin);
+  assert.deepEqual(privileged.favorite, { saved: true, allowed: false });
+  await assert.rejects(reservationPageData(f.id, token), {
+    code: "INVITATION_REQUIRED",
+  });
 });

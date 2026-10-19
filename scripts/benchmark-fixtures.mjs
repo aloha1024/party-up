@@ -16,7 +16,7 @@ export const actors = {
 
 export function seedReservations(database, count) {
   const insert = database.prepare(
-    "INSERT INTO GameReservation(id,gameName,hostName,hostTokenHash,scheduledAt,maxPlayers,status,visibility,updatedAt,deletedAt,registrationDeadline,recruitmentPaused) VALUES(?,?,?,?,?,4,?,?,?,?,?,?)",
+    "INSERT INTO GameReservation(id,gameName,hostName,hostTokenHash,scheduledAt,maxPlayers,status,visibility,updatedAt,deletedAt,registrationDeadline,recruitmentPaused,platform,gameServer) VALUES(?,?,?,?,?,4,?,?,?,?,?,?,?,?)",
   );
   const participant = database.prepare(
     "INSERT INTO Participant(id,reservationId,name,nameKey,tokenHash,checkedInAt) VALUES(?,?,?,?,?,?)",
@@ -32,6 +32,8 @@ export function seedReservations(database, count) {
         id: "bench-" + String(i).padStart(6, "0"),
         gameName: "Board Game " + (i % 10),
         hostName: "Host " + (i % 13),
+        platform: ["Steam", "PlayStation", ""][i % 3],
+        gameServer: ["亚洲一区", "欧洲二区", ""][Math.floor(i / 3) % 3],
         owner:
           i % 8 === 1 ? "dense" : i % 503 === 1 ? "sparse" : "other-host-" + i,
         scheduledAt:
@@ -67,6 +69,8 @@ export function seedReservations(database, count) {
         row.deletedAt,
         row.registrationDeadline,
         Number(row.recruitmentPaused),
+        row.platform,
+        row.gameServer,
       );
       for (let j = 0; j < i % 5; j++) {
         const owner =
@@ -164,6 +168,16 @@ export function expectedList(rows, input = {}, owner) {
         input.date
     )
       return false;
+    if (
+      input.platform &&
+      !r.platform.toLowerCase().includes(input.platform.toLowerCase())
+    )
+      return false;
+    if (
+      input.gameServer &&
+      !r.gameServer.toLowerCase().includes(input.gameServer.toLowerCase())
+    )
+      return false;
     const active = !["CANCELLED", "ENDED"].includes(r.status),
       future = r.scheduledAt > benchmarkNow.getTime();
     if (view === "upcoming" && !(future && active)) return false;
@@ -192,7 +206,11 @@ export function expectedList(rows, input = {}, owner) {
   const pageCount = Math.max(1, Math.ceil(matching.length / pageSize));
   const page = Math.min(input.page ?? 1, pageCount);
   return {
-    items: matching.slice((page - 1) * pageSize, page * pageSize).map(summary),
+    items: matching.slice((page - 1) * pageSize, page * pageSize).map((r) => ({
+      ...summary(r),
+      platform: r.platform,
+      gameServer: r.gameServer,
+    })),
     total: matching.length,
     page,
     pageSize,
@@ -236,6 +254,7 @@ export function expectedSchedule(rows, input = {}, owner = "dense") {
         checkedInAt: me?.checkedInAt
           ? new Date(me.checkedInAt).toISOString()
           : null,
+        scheduleConfirmation: null,
         attendance: !me
           ? null
           : closed
