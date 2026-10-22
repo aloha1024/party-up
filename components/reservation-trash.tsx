@@ -70,16 +70,19 @@ export function ReservationTrash({
       {listing.items.map((item) => (
         <div
           key={item.id}
-          className="panel flex flex-wrap items-center justify-between gap-4 p-5"
+          className="panel grid min-w-0 gap-4 p-4 sm:p-5 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center"
         >
           <div className="min-w-0">
             <h2 className="break-all font-semibold">{item.gameName}</h2>
-            <p className="mt-2 text-sm text-zinc-400">
-              {item.hostName} · {item.participantCount} 人 ·{" "}
-              {deletionDate.format(new Date(item.deletedAt))} 移入（北京时间）
-            </p>
+            <div className="mt-3 flex flex-wrap gap-x-4 gap-y-2 text-sm text-zinc-400">
+              <span className="break-all">发起人：{item.hostName}</span>
+              <span>{item.participantCount} 人</span>
+              <span>
+                {deletionDate.format(new Date(item.deletedAt))} 移入（北京时间）
+              </span>
+            </div>
           </div>
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-wrap gap-2 border-t border-white/10 pt-4 lg:border-t-0 lg:pt-0">
             <Button disabled={pending} onClick={() => action(item, "POST")}>
               恢复预约
             </Button>

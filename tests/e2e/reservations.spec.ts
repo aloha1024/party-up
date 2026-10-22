@@ -55,6 +55,15 @@ test("create, copy share text, guest joins, capacity closes registration, and st
     await expect(manual).toBeVisible();
     expect(await manual.inputValue()).toContain(game);
     expect(await manual.inputValue()).toContain(url);
+    await manual.click();
+    await expect
+      .poll(() =>
+        manual.evaluate(
+          (node: HTMLTextAreaElement) =>
+            node.selectionEnd - node.selectionStart,
+        ),
+      )
+      .toBe((await manual.inputValue()).length);
   }
   const guestContext = await browser.newContext({
     baseURL: process.env.TEST_BASE_URL,

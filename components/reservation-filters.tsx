@@ -36,7 +36,13 @@ export function ReservationFilters({
       method="get"
       role="search"
       aria-label="筛选预约"
-      className="panel mb-6 grid gap-4 p-4 sm:grid-cols-2 lg:grid-cols-[2fr_1fr_1fr_auto]"
+      className={
+        path === "/admin"
+          ? "panel grid gap-4 p-4 sm:grid-cols-2 lg:grid-cols-4 sm:p-5"
+          : path === "/"
+            ? "panel grid gap-4 p-4 sm:grid-cols-2 sm:p-5 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)_minmax(0,1fr)] xl:grid-cols-[minmax(0,2fr)_minmax(0,1fr)_minmax(0,1fr)_auto]"
+            : "panel mb-6 grid gap-4 p-4 sm:grid-cols-2 lg:grid-cols-[2fr_1fr_1fr_auto]"
+      }
       onSubmit={(event) => {
         event.preventDefault();
         const form = new FormData(event.currentTarget);
@@ -55,7 +61,15 @@ export function ReservationFilters({
         );
       }}
     >
-      <label className="min-w-0 space-y-2 text-sm">
+      <label
+        className={
+          path === "/admin"
+            ? "min-w-0 space-y-2 text-sm sm:col-span-2"
+            : path === "/"
+              ? "min-w-0 space-y-2 text-sm sm:col-span-2 lg:col-span-1"
+              : "min-w-0 space-y-2 text-sm"
+        }
+      >
         <span>搜索预约</span>
         <Input
           name="q"
@@ -80,7 +94,15 @@ export function ReservationFilters({
         <span>开玩日期（北京时间）</span>
         <Input name="date" type="date" defaultValue={filters.date} />
       </label>
-      <div className="flex items-end gap-2">
+      <div
+        className={
+          path === "/admin"
+            ? "flex flex-wrap items-end gap-2 border-t border-white/10 pt-4 sm:col-span-2 sm:justify-end lg:col-span-4"
+            : path === "/"
+              ? "flex flex-wrap items-end gap-2 sm:col-span-2 sm:justify-end lg:col-span-3 xl:col-span-1"
+              : "flex items-end gap-2"
+        }
+      >
         <input type="hidden" name="pageSize" value={filters.pageSize} />
         {tab && <input type="hidden" name="tab" value={tab} />}
         <Button disabled={pending}>{pending ? "筛选中…" : "筛选"}</Button>
@@ -111,7 +133,7 @@ export function ReservationPagination({
         {total > 0 &&
           ` · 显示 ${(page - 1) * pageSize + 1}–${Math.min(page * pageSize, total)} 场`}
       </p>
-      <div className="flex items-center gap-3">
+      <div className="flex flex-wrap items-center gap-3">
         {page > 1 ? (
           <Button asChild variant="outline">
             <Link

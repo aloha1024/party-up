@@ -131,7 +131,11 @@ try {
   }
   if (interrupted) throw new Error("测试已中断");
   if (process.argv.includes("--e2e")) {
-    await run(["node_modules/@playwright/test/cli.js", "test"]);
+    await run([
+      "node_modules/@playwright/test/cli.js",
+      "test",
+      ...process.argv.slice(2).filter((arg) => arg !== "--e2e"),
+    ]);
   } else {
     const tests = (await readdir("tests"))
       .filter((name) => name.endsWith(".test.ts"))

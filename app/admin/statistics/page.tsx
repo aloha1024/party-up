@@ -58,7 +58,10 @@ export default async function Page({
         </p>
       ) : (
         <>
-          <nav aria-label="统计时间范围" className="flex flex-wrap gap-3">
+          <nav
+            aria-label="统计时间范围"
+            className="panel grid grid-cols-2 gap-2 p-3 sm:flex sm:flex-wrap sm:items-center sm:p-4"
+          >
             {(Object.keys(statisticsRangeLabels) as StatisticsRange[]).map(
               (range) => (
                 <Button
@@ -78,9 +81,13 @@ export default async function Page({
                 </Button>
               ),
             )}
-            <form action="/admin/statistics" method="get">
+            <form
+              action="/admin/statistics"
+              method="get"
+              className="sm:ml-auto"
+            >
               <input type="hidden" name="range" value={statistics.range} />
-              <Button type="submit" variant="outline">
+              <Button type="submit" variant="outline" className="w-full">
                 刷新数据
               </Button>
             </form>

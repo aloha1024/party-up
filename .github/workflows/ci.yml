@@ -25,12 +25,34 @@ jobs:
           test_cpus="$(python3 -c 'import os; print(",".join(map(str, sorted(os.sched_getaffinity(0))[:2])))')"
           taskset -c "$test_cpus" npm test
       - run: npm run typecheck
-      - run: npx playwright install --with-deps chromium webkit
-      - run: npm run test:e2e
-      - uses: actions/upload-artifact@v4
-        if: failure()
+  browser:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - project: desktop
+            engine: chromium
+          - project: mobile
+            engine: chromium
+          - project: webkit
+            engine: webkit
+          - project: http-fallback
+            engine: chromium
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
         with:
-          name: browser-test-report
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps ${{ matrix.engine }}
+      - run: npm run test:e2e -- --project=${{ matrix.project }} --max-failures=1
+      - uses: actions/upload-artifact@v4
+        if: failure() || cancelled()
+        with:
+          name: browser-test-report-${{ matrix.project }}
           path: |
             playwright-report/
             test-results/
@@ -64,7 +86,7 @@ jobs:
           retention-days: 1
           if-no-files-found: error
   publish:
-    needs: [test, docker]
+    needs: [test, browser, docker]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main' && github.repository == 'aloha1024/party-up'
     runs-on: ubuntu-latest
     timeout-minutes: 15

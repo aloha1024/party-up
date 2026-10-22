@@ -73,9 +73,17 @@ test("guest notifications show committed changes, persist read state, and stay i
       { reason: "不应出现在提醒的取消原因" },
       owner,
     );
+    await page.goto("/");
+    const navigation = page.getByRole("navigation", { name: "主导航" });
+    await expect(
+      navigation.getByRole("link", { name: "站内提醒", exact: true }),
+    ).toHaveCount(0);
     await context.addCookies([{ ...browserCookie(guest), url: baseURL! }]);
     await page.goto("/");
-    await page.getByRole("link", { name: "站内提醒", exact: true }).click();
+    await expect(
+      navigation.getByRole("link", { name: "站内提醒", exact: true }),
+    ).toHaveCount(0);
+    await page.goto("/notifications");
     await expect(
       page.getByRole("heading", { name: "我的提醒", exact: true }),
     ).toBeVisible();
@@ -288,7 +296,11 @@ test("partial guest claims transfer only selected reservation notifications to t
       { ...browserCookie(member), url: baseURL! },
     ]);
     const accountPage = await accountContext.newPage();
-    await accountPage.goto("/notifications");
+    await accountPage.goto("/");
+    await accountPage
+      .getByRole("navigation", { name: "主导航" })
+      .getByRole("link", { name: "站内提醒", exact: true })
+      .click();
     await expect(accountPage.locator("[data-notification-id]")).toHaveCount(1);
     await expect(accountPage.locator("[data-notification-id]")).toContainText(
       "选中关联的提醒",

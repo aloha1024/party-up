@@ -48,7 +48,7 @@ export default async function Page({
             method="get"
             role="search"
             aria-label="筛选操作记录"
-            className="panel grid gap-4 p-4 sm:grid-cols-[1fr_1fr_auto]"
+            className="panel grid gap-4 p-4 sm:grid-cols-2 sm:p-5 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]"
           >
             <label className="min-w-0 space-y-2 text-sm">
               <span>搜索记录</span>
@@ -74,7 +74,7 @@ export default async function Page({
                 ))}
               </select>
             </label>
-            <div className="flex items-end gap-2">
+            <div className="flex flex-wrap items-end gap-2 border-t border-white/10 pt-4 sm:col-span-2 sm:justify-end">
               <Button>筛选</Button>
               <Button asChild variant="outline">
                 <Link href="/admin/audit">重置</Link>
@@ -83,7 +83,7 @@ export default async function Page({
           </form>
           <ol className="space-y-3">
             {listing.items.map((item) => (
-              <li key={item.id} className="panel space-y-2 p-5">
+              <li key={item.id} className="panel min-w-0 space-y-3 p-4 sm:p-5">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <span className="font-medium">
                     {auditLabels[item.action as AuditAction] ?? item.action}
@@ -128,7 +128,7 @@ export default async function Page({
             <p className="text-zinc-400">
               共 {listing.total} 条 · {listing.page} / {listing.pageCount} 页
             </p>
-            <div className="flex gap-2">
+            <div className="flex flex-wrap gap-2">
               {listing.page > 1 && (
                 <Button asChild variant="outline">
                   <Link href={auditUrl(listing.filters, listing.page - 1)}>
