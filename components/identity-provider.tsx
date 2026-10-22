@@ -8,6 +8,7 @@ import {
   type ReactNode,
 } from "react";
 import Link from "next/link";
+import { Button } from "./ui/button";
 import type { PublicIdentity } from "../lib/user-account";
 import { setClientIdentity, identityEventSource } from "../lib/client-identity";
 import { createIdentityCheck } from "../lib/identity-check";
@@ -97,21 +98,28 @@ export function IdentityProvider({
 }
 export function AccountNavigation() {
   const identity = useIdentity();
+  if (!identity || identity.mode === "anonymous" || identity.mode === "guest")
+    return (
+      <div className="flex items-center gap-2">
+        <Button asChild size="sm" variant="ghost">
+          <Link href="/account/login" prefetch={false}>
+            sign in
+          </Link>
+        </Button>
+        <Button asChild size="sm" variant="outline">
+          <Link href="/account/register" prefetch={false}>
+            sign on
+          </Link>
+        </Button>
+      </div>
+    );
   return (
     <Link
       className="max-w-40 truncate text-sm text-zinc-300"
       prefetch={false}
-      href={
-        identity?.mode === "user" || identity?.mode === "invalid"
-          ? "/account"
-          : "/account/login"
-      }
+      href="/account"
     >
-      {identity?.mode === "user"
-        ? identity.user?.nickname
-        : identity?.mode === "invalid"
-          ? "重新登录 / 退出"
-          : "游客 · 登录 / 注册"}
+      {identity?.mode === "user" ? identity.user?.nickname : "重新登录 / 退出"}
     </Link>
   );
 }

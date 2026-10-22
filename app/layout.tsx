@@ -72,6 +72,9 @@ export default async function RootLayout({
             </div>
           </header>
           <main className="mx-auto min-h-[calc(100vh-160px)] max-w-6xl px-5 py-10 sm:px-8 sm:py-14">
+            {(viewer.mode === "anonymous" || viewer.mode === "guest") && (
+              <p className="mb-6 text-sm text-zinc-400">你正在使用游客模式</p>
+            )}
             {children}
           </main>
           <footer className="mx-auto flex max-w-6xl items-center justify-between border-t border-white/10 px-5 py-6 text-xs text-zinc-500 sm:px-8">
