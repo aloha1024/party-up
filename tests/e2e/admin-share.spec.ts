@@ -109,11 +109,14 @@ test("admin copies all currently available games across pages, with a manual fal
     await expect(manual).toHaveValue(new RegExp(ids[12]));
     const manualValue = await manual.inputValue();
     await manual.click();
-    expect(
-      await manual.evaluate(
-        (node: HTMLTextAreaElement) => node.selectionEnd - node.selectionStart,
-      ),
-    ).toBe(manualValue.length);
+    await expect
+      .poll(() =>
+        manual.evaluate(
+          (node: HTMLTextAreaElement) =>
+            node.selectionEnd - node.selectionStart,
+        ),
+      )
+      .toBe(manualValue.length);
     await page.setViewportSize({
       width: info.project.name === "desktop" ? 1440 : 320,
       height: 900,

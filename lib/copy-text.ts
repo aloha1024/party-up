@@ -1,8 +1,14 @@
 export function selectTextareaText(area: HTMLTextAreaElement) {
-  // WebKit can leave readonly textareas unselected when only select() is used.
   area.focus();
   area.select();
   area.setSelectionRange(0, area.value.length);
+  // WebKit's native click handling can collapse a readonly textarea's range
+  // after the event handler. Restore it after that handling, without taking
+  // focus back if the user has already moved to another control.
+  requestAnimationFrame(() => {
+    if (area.isConnected && document.activeElement === area)
+      area.setSelectionRange(0, area.value.length);
+  });
 }
 
 export async function copyText(text: string) {
