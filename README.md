@@ -72,6 +72,7 @@ npm test           # 自动创建测试数据库、生产构建、启动独立�
 npm run test:unit  # 业务与脚本测试，跳过构建及 HTTP 接口测试
 npx playwright install --with-deps chromium webkit  # 首次安装浏览器及 Linux 依赖
 npm run test:e2e   # 临时库上的 Chromium、WebKit/iPhone 与普通 HTTP 测试
+npm run test:e2e -- --project=webkit # 可指定浏览器项目或传入 Playwright 筛选参数
 npm run benchmark:queries  # 默认 5,000 场合成预约的查询基准，不读取现有数据库
 npm run benchmark:queries -- --large  # 使用 50,000 场合成预约
 npm run build      # 生产构建
