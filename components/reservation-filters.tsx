@@ -39,7 +39,9 @@ export function ReservationFilters({
       className={
         path === "/admin"
           ? "panel grid gap-4 p-4 sm:grid-cols-2 lg:grid-cols-4 sm:p-5"
-          : "panel mb-6 grid gap-4 p-4 sm:grid-cols-2 lg:grid-cols-[2fr_1fr_1fr_auto]"
+          : path === "/"
+            ? "panel grid gap-4 p-4 sm:grid-cols-2 sm:p-5 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)_minmax(0,1fr)] xl:grid-cols-[minmax(0,2fr)_minmax(0,1fr)_minmax(0,1fr)_auto]"
+            : "panel mb-6 grid gap-4 p-4 sm:grid-cols-2 lg:grid-cols-[2fr_1fr_1fr_auto]"
       }
       onSubmit={(event) => {
         event.preventDefault();
@@ -63,7 +65,9 @@ export function ReservationFilters({
         className={
           path === "/admin"
             ? "min-w-0 space-y-2 text-sm sm:col-span-2"
-            : "min-w-0 space-y-2 text-sm"
+            : path === "/"
+              ? "min-w-0 space-y-2 text-sm sm:col-span-2 lg:col-span-1"
+              : "min-w-0 space-y-2 text-sm"
         }
       >
         <span>搜索预约</span>
@@ -94,7 +98,9 @@ export function ReservationFilters({
         className={
           path === "/admin"
             ? "flex flex-wrap items-end gap-2 border-t border-white/10 pt-4 sm:col-span-2 sm:justify-end lg:col-span-4"
-            : "flex items-end gap-2"
+            : path === "/"
+              ? "flex flex-wrap items-end gap-2 sm:col-span-2 sm:justify-end lg:col-span-3 xl:col-span-1"
+              : "flex items-end gap-2"
         }
       >
         <input type="hidden" name="pageSize" value={filters.pageSize} />

@@ -16,6 +16,7 @@ import { ArrowUpRight, Clock3, Gamepad2, Plus, Users } from "lucide-react";
 import Link from "next/link";
 
 import { Badge } from "./reservation-ui";
+import { ReservationLobby } from "./reservation-lobby";
 import { useIdentity } from "./identity-provider";
 export function ReservationList({
   listing,
@@ -42,6 +43,7 @@ export function ReservationList({
     scope: JSON.stringify([path, tab, listing.filters]),
     scheduledAt: listing.items.flatMap(recruitmentWakeups),
   });
+  if (!tab) return <ReservationLobby listing={listing} />;
   const reservations = listing.items;
   const filtered = !!(
     listing.filters.q ||
