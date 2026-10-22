@@ -3,7 +3,7 @@ import { useState } from "react";
 import { Copy } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import { copyText } from "@/lib/copy-text";
+import { copyText, selectTextareaText } from "@/lib/copy-text";
 import { reservationShareText } from "@/lib/reservation-share";
 import type { Reservation } from "@/types/reservation";
 
@@ -46,8 +46,8 @@ export function ReservationShare({
               className="field min-h-60"
               readOnly
               value={manualText}
-              onFocus={(event) => event.currentTarget.select()}
-              onClick={(event) => event.currentTarget.select()}
+              onFocus={(event) => selectTextareaText(event.currentTarget)}
+              onClick={(event) => selectTextareaText(event.currentTarget)}
             />
           </label>
           <Button variant="ghost" onClick={() => setManualText("")}>

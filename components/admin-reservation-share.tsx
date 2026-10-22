@@ -5,7 +5,7 @@ import { Copy } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "./ui/button";
 import { request } from "@/lib/client-request";
-import { copyText } from "@/lib/copy-text";
+import { copyText, selectTextareaText } from "@/lib/copy-text";
 import {
   adminReservationShareSchema,
   adminReservationShareText,
@@ -84,8 +84,8 @@ export function AdminReservationShare({
               rows={7}
               readOnly
               value={manualText}
-              onFocus={(event) => event.currentTarget.select()}
-              onClick={(event) => event.currentTarget.select()}
+              onFocus={(event) => selectTextareaText(event.currentTarget)}
+              onClick={(event) => selectTextareaText(event.currentTarget)}
             />
           </label>
           <Button variant="ghost" onClick={() => setManualText("")}>

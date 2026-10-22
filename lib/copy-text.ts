@@ -1,3 +1,10 @@
+export function selectTextareaText(area: HTMLTextAreaElement) {
+  // WebKit can leave readonly textareas unselected when only select() is used.
+  area.focus();
+  area.select();
+  area.setSelectionRange(0, area.value.length);
+}
+
 export async function copyText(text: string) {
   if (navigator.clipboard?.writeText) {
     try {
@@ -17,8 +24,7 @@ export async function copyText(text: string) {
   area.style.opacity = "0";
   document.body.appendChild(area);
   try {
-    area.select();
-    area.setSelectionRange(0, text.length);
+    selectTextareaText(area);
     return document.execCommand("copy");
   } catch {
     return false;
