@@ -8,6 +8,7 @@ import Link from "next/link";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Badge } from "@/components/reservation-ui";
 import { formatTime } from "@/lib/utils";
 import {
   ReservationFilters,
@@ -15,6 +16,16 @@ import {
 } from "@/components/reservation-filters";
 import { useReservationRefresh } from "@/components/use-reservation-refresh";
 import type { ReservationSummary, ReservationPage } from "@/types/reservation";
+
+const adminNavigation = [
+  { view: "statistics", href: "/admin/statistics", label: "活动概览" },
+  { view: "reservations", href: "/admin", label: "预约管理" },
+  { view: "trash", href: "/admin/trash", label: "回收站" },
+  { view: "audit", href: "/admin/audit", label: "操作记录" },
+  { view: "users", href: "/admin/users", label: "普通账号" },
+  { view: "accounts", href: "/admin/accounts", label: "管理员账号" },
+  { view: "password", href: "/admin/password", label: "修改密码" },
+] as const;
 
 export function AdminPanel({
   authenticated,
@@ -118,12 +129,12 @@ export function AdminPanel({
   }
 
   return (
-    <div className="mx-auto max-w-3xl">
+    <div className="min-w-0">
       <Link href="/" className="text-sm text-zinc-400">
         ← 返回预约大厅
       </Link>
-      <div className="my-8 flex items-center justify-between gap-4">
-        <h1 className="text-3xl font-bold">
+      <div className="my-6 flex flex-wrap items-center justify-between gap-4 sm:my-8">
+        <h1 className="min-w-0 text-2xl font-bold sm:text-3xl">
           {view === "statistics"
             ? "活动概览"
             : view === "audit"
@@ -155,70 +166,28 @@ export function AdminPanel({
         )}
       </div>
       {authenticated && (
-        <nav aria-label="管理员导航" className="mb-6 flex flex-wrap gap-3">
-          <Button
-            asChild
-            variant={view === "statistics" ? "default" : "outline"}
-          >
-            <Link
-              href="/admin/statistics"
-              prefetch={false}
-              aria-current={view === "statistics" ? "page" : undefined}
-            >
-              活动概览
-            </Link>
-          </Button>
-          <Button
-            asChild
-            variant={view === "reservations" ? "default" : "outline"}
-          >
-            <Link
-              href="/admin"
-              aria-current={view === "reservations" ? "page" : undefined}
-            >
-              预约管理
-            </Link>
-          </Button>
-          <Button asChild variant={view === "password" ? "default" : "outline"}>
-            <Link
-              href="/admin/password"
-              aria-current={view === "password" ? "page" : undefined}
-            >
-              修改密码
-            </Link>
-          </Button>
-          <Button asChild variant={view === "users" ? "default" : "outline"}>
-            <Link href="/admin/users">普通账号</Link>
-          </Button>
-          {canCreateAdmins && (
-            <Button
-              asChild
-              variant={view === "accounts" ? "default" : "outline"}
-            >
-              <Link
-                href="/admin/accounts"
-                aria-current={view === "accounts" ? "page" : undefined}
+        <nav
+          aria-label="管理员导航"
+          className="panel mb-8 grid grid-cols-2 gap-2 p-2 sm:grid-cols-4 lg:grid-cols-7"
+        >
+          {adminNavigation
+            .filter((item) => item.view !== "accounts" || canCreateAdmins)
+            .map((item) => (
+              <Button
+                key={item.view}
+                asChild
+                variant={view === item.view ? "default" : "ghost"}
+                className="min-w-0 px-3"
               >
-                管理员账号
-              </Link>
-            </Button>
-          )}
-          <Button asChild variant={view === "trash" ? "default" : "outline"}>
-            <Link
-              href="/admin/trash"
-              aria-current={view === "trash" ? "page" : undefined}
-            >
-              回收站
-            </Link>
-          </Button>
-          <Button asChild variant={view === "audit" ? "default" : "outline"}>
-            <Link
-              href="/admin/audit"
-              aria-current={view === "audit" ? "page" : undefined}
-            >
-              操作记录
-            </Link>
-          </Button>
+                <Link
+                  href={item.href}
+                  prefetch={item.view === "statistics" ? false : undefined}
+                  aria-current={view === item.view ? "page" : undefined}
+                >
+                  {item.label}
+                </Link>
+              </Button>
+            ))}
         </nav>
       )}
       {error && (
@@ -289,7 +258,10 @@ export function AdminPanel({
           view === "users" ? (
             children
           ) : view === "password" ? (
-            <form className="panel space-y-5 p-6" onSubmit={changePassword}>
+            <form
+              className="panel max-w-2xl space-y-5 p-5 sm:p-6"
+              onSubmit={changePassword}
+            >
               <div>
                 <h2 className="text-xl font-semibold">修改管理员密码</h2>
                 <p className="mt-2 text-sm text-zinc-400">
@@ -353,33 +325,34 @@ export function AdminPanel({
               </p>
               {reservations.map((r) => (
                 <div
-                  className="panel flex flex-wrap items-center justify-between gap-4 p-5"
+                  className="panel grid min-w-0 gap-4 p-4 sm:p-5 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center"
                   key={r.id}
                 >
                   <div className="min-w-0">
+                    <div className="mb-2 flex flex-wrap items-center gap-2">
+                      <Badge reservation={r} />
+                    </div>
                     <Link
-                      className="break-all text-lg font-semibold hover:text-lime-300"
+                      className="block break-all text-lg font-semibold hover:text-lime-300"
                       href={`/reservation/${r.id}`}
                     >
                       {r.gameName}
-                      {r.visibility === "INVITE" && (
-                        <span className="ml-2 text-xs text-amber-300">
-                          邀请制
-                        </span>
-                      )}
                     </Link>
-                    <p className="mt-2 text-sm text-zinc-400">
-                      {formatTime(r.scheduledAt)} · {r.hostName} ·{" "}
-                      {r.participantCount}/{r.maxPlayers} 人
+                    <div className="mt-3 flex flex-wrap gap-x-4 gap-y-2 text-sm text-zinc-400">
+                      <span>{formatTime(r.scheduledAt)}</span>
+                      <span className="break-all">发起人：{r.hostName}</span>
+                      <span>
+                        {r.participantCount}/{r.maxPlayers} 人
+                      </span>
                       {r.status === "OPEN" && !recruitmentClosure(r) && (
-                        <span className="ml-3 text-lime-300">
+                        <span className="text-lime-300">
                           还可报名{" "}
                           {Math.max(0, r.maxPlayers - r.participantCount)} 人
                         </span>
                       )}
-                    </p>
+                    </div>
                   </div>
-                  <div className="flex gap-2">
+                  <div className="flex flex-wrap gap-2 border-t border-white/10 pt-4 lg:border-t-0 lg:pt-0">
                     {!["STARTED", "CANCELLED", "ENDED"].includes(r.status) && (
                       <Button asChild variant="outline">
                         <Link href={`/reservation/${r.id}/edit`}>编辑预约</Link>

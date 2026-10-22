@@ -62,3 +62,15 @@ button {
   background: #bef264;
   color: #111;
 }
+
+/* Native date inputs must be allowed to shrink inside narrow admin grids. */
+.admin-shell .field {
+  min-width: 0;
+  max-width: 100%;
+}
+.admin-shell input[type="date"] {
+  min-inline-size: 0;
+}
+.admin-shell input[type="date"]::-webkit-date-and-time-value {
+  text-align: start;
+}

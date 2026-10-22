@@ -18,7 +18,7 @@ export function TrashFilters({ listing }: { listing: TrashPage }) {
       method="get"
       role="search"
       aria-label="筛选回收站"
-      className="panel grid gap-4 p-4 sm:grid-cols-2 lg:grid-cols-[2fr_1fr_auto]"
+      className="panel grid gap-4 p-4 sm:grid-cols-2 sm:p-5 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]"
       onSubmit={(event) => {
         event.preventDefault();
         const form = new FormData(event.currentTarget);
@@ -49,7 +49,7 @@ export function TrashFilters({ listing }: { listing: TrashPage }) {
         <span>移入日期（北京时间）</span>
         <Input name="date" type="date" defaultValue={filters.date} />
       </label>
-      <div className="flex items-end gap-2">
+      <div className="flex flex-wrap items-end gap-2 border-t border-white/10 pt-4 sm:col-span-2 sm:justify-end">
         <input type="hidden" name="pageSize" value={filters.pageSize} />
         <Button disabled={pending}>{pending ? "筛选中…" : "筛选"}</Button>
         <Button asChild variant="outline">
@@ -71,7 +71,7 @@ export function TrashPagination({ listing }: { listing: TrashPage }) {
         {total > 0 &&
           ` · 显示 ${(page - 1) * pageSize + 1}–${Math.min(page * pageSize, total)} 场`}
       </p>
-      <div className="flex items-center gap-3">
+      <div className="flex flex-wrap items-center gap-3">
         {page > 1 ? (
           <Button asChild variant="outline">
             <Link

@@ -94,8 +94,11 @@ export function AdminAccounts({
         </p>
       )}
       {resetTarget && (
-        <form className="panel space-y-4 p-6" onSubmit={resetPassword}>
-          <h2 className="text-xl font-semibold">
+        <form
+          className="panel max-w-2xl space-y-4 p-5 sm:p-6"
+          onSubmit={resetPassword}
+        >
+          <h2 className="break-all text-xl font-semibold">
             重置密码：{resetTarget.username}
           </h2>
           <p className="text-sm text-zinc-400">
@@ -125,7 +128,7 @@ export function AdminAccounts({
               disabled={pending}
             />
           </label>
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
             <Button disabled={pending}>确认重置</Button>
             <Button
               variant="ghost"
@@ -138,9 +141,9 @@ export function AdminAccounts({
           </div>
         </form>
       )}
-      <form onSubmit={submit} className="panel space-y-5 p-6">
+      <form onSubmit={submit} className="panel max-w-2xl space-y-5 p-5 sm:p-6">
         <div>
-          <h2 className="text-xl font-semibold">创建管理员</h2>
+          <h2 className="break-all text-xl font-semibold">创建管理员</h2>
           <p className="mt-2 text-sm leading-6 text-zinc-400">
             新管理员可管理预约并修改自己的密码，但不能管理其他管理员账号。首次登录需更换临时密码。
           </p>
@@ -188,7 +191,10 @@ export function AdminAccounts({
         </p>
         <Button disabled={pending}>{pending ? "处理中…" : "创建管理员"}</Button>
       </form>
-      <section className="panel p-6" aria-labelledby="account-list-title">
+      <section
+        className="panel p-4 sm:p-6"
+        aria-labelledby="account-list-title"
+      >
         <h2 id="account-list-title" className="mb-4 text-xl font-semibold">
           管理员账号
         </h2>
@@ -196,17 +202,19 @@ export function AdminAccounts({
           {accounts.map((account) => (
             <li
               key={account.id}
-              className="flex flex-wrap items-center justify-between gap-2 py-3"
+              className="grid min-w-0 gap-4 py-4 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center"
             >
-              <span className="break-all font-medium">{account.username}</span>
-              <span className="text-sm text-zinc-400">
-                {account.id === 1 ? "主管理员" : "管理员"} ·{" "}
-                {!account.isActive
-                  ? "已禁用"
-                  : account.mustChangePassword
-                    ? "待首次改密"
-                    : "已启用"}
-              </span>
+              <div className="min-w-0 space-y-2">
+                <p className="break-all font-medium">{account.username}</p>
+                <p className="text-sm text-zinc-400">
+                  {account.id === 1 ? "主管理员" : "管理员"} ·{" "}
+                  {!account.isActive
+                    ? "已禁用"
+                    : account.mustChangePassword
+                      ? "待首次改密"
+                      : "已启用"}
+                </p>
+              </div>
               {account.id !== 1 && (
                 <div className="flex flex-wrap gap-2">
                   <Button
