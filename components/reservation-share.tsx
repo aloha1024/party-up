@@ -3,26 +3,9 @@ import { useState } from "react";
 import { Copy } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import { copyText } from "@/lib/copy-text";
 import { reservationShareText } from "@/lib/reservation-share";
 import type { Reservation } from "@/types/reservation";
-
-function fallbackCopy(text: string) {
-  const area = document.createElement("textarea");
-  const previous = document.activeElement;
-  area.value = text;
-  area.readOnly = true;
-  area.style.position = "fixed";
-  area.style.opacity = "0";
-  document.body.appendChild(area);
-  try {
-    area.select();
-    area.setSelectionRange(0, text.length);
-    return document.execCommand("copy");
-  } finally {
-    area.remove();
-    if (previous instanceof HTMLElement) previous.focus();
-  }
-}
 
 export function ReservationShare({
   reservation,
@@ -39,15 +22,7 @@ export function ReservationShare({
     ).href;
     const text = reservationShareText(reservation, url);
     try {
-      let copied = false;
-      if (navigator.clipboard?.writeText) {
-        try {
-          await navigator.clipboard.writeText(text);
-          copied = true;
-        } catch {}
-      }
-      if (!copied) copied = fallbackCopy(text);
-      if (!copied) throw new Error("Clipboard unavailable");
+      if (!(await copyText(text))) throw new Error("Clipboard unavailable");
       setManualText("");
       toast.success("接龙信息已复制，可以粘贴分享给队友");
     } catch {

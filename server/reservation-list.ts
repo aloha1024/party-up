@@ -10,6 +10,7 @@ import {
 } from "../lib/reservation-list";
 import { createHash } from "node:crypto";
 import { getStatus } from "../lib/status";
+import { availableReservationConditions } from "./reservation-availability";
 import type { ReservationPage } from "../types/reservation";
 
 const select = {
@@ -183,14 +184,7 @@ async function availableReservations(
   publicOnly = false,
 ): Promise<ReservationPage> {
   // Prisma SQLite stores DateTime as epoch milliseconds. All input values stay bound parameters.
-  const conditions = [
-    Prisma.sql`r."deletedAt" IS NULL`,
-    Prisma.sql`r."status" NOT IN ('CANCELLED', 'ENDED')`,
-    Prisma.sql`r."scheduledAt" > ${now.getTime()}`,
-    Prisma.sql`r."recruitmentPaused" = false`,
-    Prisma.sql`(r."registrationDeadline" IS NULL OR r."registrationDeadline" > ${now.getTime()})`,
-    Prisma.sql`(SELECT COUNT(*) FROM "Participant" p WHERE p."reservationId" = r."id") < r."maxPlayers"`,
-  ];
+  const conditions = availableReservationConditions(now);
   if (publicOnly) conditions.push(Prisma.sql`r."visibility" = 'PUBLIC'`);
   if (filters.q) {
     // Match Prisma SQLite contains semantics, including LIKE wildcards and ASCII case folding.

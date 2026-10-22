@@ -8,6 +8,7 @@ import Link from "next/link";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { AdminReservationShare } from "@/components/admin-reservation-share";
 import { Badge } from "@/components/reservation-ui";
 import { formatTime } from "@/lib/utils";
 import {
@@ -53,13 +54,14 @@ export function AdminPanel({
 }) {
   const router = useRouter();
   const [pending, start] = useTransition();
+  const [sharing, setSharing] = useState(false);
   useReservationRefresh({
     sample: refreshSample,
     data: { listing, canCreateAdmins, authenticated },
     scope: JSON.stringify(listing?.filters),
     scheduledAt: reservations.flatMap(recruitmentWakeups),
     enabled: authenticated && view === "reservations",
-    paused: pending,
+    paused: pending || sharing,
   });
   const [error, setError] = useState("");
   const [firstLogin, setFirstLogin] = useState(false);
@@ -319,6 +321,10 @@ export function AdminPanel({
                   )}
                 </>
               )}
+              <AdminReservationShare
+                disabled={pending}
+                onPendingChange={setSharing}
+              />
               <p className="text-sm text-zinc-400">
                 共 {listing?.total ?? reservations.length}{" "}
                 场预约。移入回收站后不再公开展示，可在回收站恢复。
